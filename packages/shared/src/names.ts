@@ -42,11 +42,11 @@ export const BUTTON_NAMES = [
 ] as const satisfies readonly ControlNameDef[];
 
 /**
- * Names for the other types. PROVISIONAL — the `toggle` / `shapeSelector` pools
- * below were expanded for Stage 3 so a 2–5-player game has enough distinct
- * labels; they still need a proper spoken-vocabulary review (DECISIONS D37).
- * Compatibility is set where a name plausibly fits more than one interaction
- * (ДАВЛЕНИЕ: slider/dial; ФАЗОВРАЩАТЕЛЬ: dial/toggle).
+ * Names for the other types. PROVISIONAL and expanded per stage for enough
+ * distinct labels in a 4-player game (~24 controls); the whole set still needs a
+ * proper spoken-vocabulary review (DECISIONS D37 / D47). Compatibility lists
+ * more than one type where a name plausibly fits (ДАВЛЕНИЕ: slider/dial;
+ * ФАЗОВРАЩАТЕЛЬ: dial/toggle).
  */
 export const OTHER_NAMES = [
   // toggle
@@ -55,15 +55,41 @@ export const OTHER_NAMES = [
   { id: "orbitalny_zamok", label: "ОРБИТАЛЬНЫЙ ЗАМОК", compatibleTypes: ["toggle"] },
   { id: "magnitny_zatvor", label: "МАГНИТНЫЙ ЗАТВОР", compatibleTypes: ["toggle"] },
   { id: "termokontur", label: "ТЕРМОКОНТУР", compatibleTypes: ["toggle"] },
+  { id: "fotonny_shlyuz", label: "ФОТОННЫЙ ШЛЮЗ", compatibleTypes: ["toggle"] },
+  { id: "plazmorubilnik", label: "ПЛАЗМОРУБИЛЬНИК", compatibleTypes: ["toggle"] },
   // shapeSelector
   { id: "turbozhaba", label: "ТУРБОЖАБА", compatibleTypes: ["shapeSelector"] },
   { id: "gravimetr", label: "ГРАВИМЕТР", compatibleTypes: ["shapeSelector"] },
   { id: "vektorny_zazhim", label: "ВЕКТОРНЫЙ ЗАЖИМ", compatibleTypes: ["shapeSelector"] },
   { id: "sinhrofazotron", label: "СИНХРОФАЗОТРОН", compatibleTypes: ["shapeSelector"] },
-  // direction / slider / dial / hold / mash — one example each, pending approval
+  { id: "glifoskaner", label: "ГЛИФОСКАНЕР", compatibleTypes: ["shapeSelector"] },
+  { id: "form_rele", label: "ФОРМ-РЕЛЕ", compatibleTypes: ["shapeSelector"] },
+  { id: "signal_mayak", label: "СИГНАЛ-МАЯК", compatibleTypes: ["shapeSelector"] },
+  // direction
   { id: "giroskop", label: "ГИРОСКОП", compatibleTypes: ["direction"] },
+  { id: "kursovoy_rul", label: "КУРСОВОЙ РУЛЬ", compatibleTypes: ["direction"] },
+  { id: "vektor_tyagi", label: "ВЕКТОР ТЯГИ", compatibleTypes: ["direction"] },
+  { id: "rul_vysoty", label: "РУЛЬ ВЫСОТЫ", compatibleTypes: ["direction"] },
+  { id: "shturval", label: "ШТУРВАЛ", compatibleTypes: ["direction"] },
+  { id: "krenomer", label: "КРЕНОМЕР", compatibleTypes: ["direction"] },
+  { id: "navigator", label: "НАВИГАТОР", compatibleTypes: ["direction"] },
+  // slider
   { id: "davlenie", label: "ДАВЛЕНИЕ", compatibleTypes: ["slider", "dial"] },
+  { id: "tyaga_reaktora", label: "ТЯГА РЕАКТОРА", compatibleTypes: ["slider"] },
+  { id: "uroven_plazmy", label: "УРОВЕНЬ ПЛАЗМЫ", compatibleTypes: ["slider"] },
+  { id: "nadduv", label: "НАДДУВ", compatibleTypes: ["slider"] },
+  { id: "temperatura_yadra", label: "ТЕМПЕРАТУРА ЯДРА", compatibleTypes: ["slider"] },
+  { id: "moshchnost_shchita", label: "МОЩНОСТЬ ЩИТА", compatibleTypes: ["slider"] },
+  { id: "podacha_topliva", label: "ПОДАЧА ТОПЛИВА", compatibleTypes: ["slider"] },
+  // dial
   { id: "fazovrashchatel", label: "ФАЗОВРАЩАТЕЛЬ", compatibleTypes: ["dial", "toggle"] },
+  { id: "chastota_kvazara", label: "ЧАСТОТА КВАЗАРА", compatibleTypes: ["dial"] },
+  { id: "nonius", label: "НОНИУС", compatibleTypes: ["dial"] },
+  { id: "verner", label: "ВЕРНЬЕР", compatibleTypes: ["dial"] },
+  { id: "kalibrator", label: "КАЛИБРАТОР", compatibleTypes: ["dial"] },
+  { id: "goniometr", label: "ГОНИОМЕТР", compatibleTypes: ["dial"] },
+  { id: "rezonator", label: "РЕЗОНАТОР", compatibleTypes: ["dial"] },
+  // hold / mash — one example each, pending their own stages
   { id: "stabilizator", label: "СТАБИЛИЗАТОР", compatibleTypes: ["hold"] },
   { id: "impulsator", label: "ИМПУЛЬСАТОР", compatibleTypes: ["mash"] },
 ] as const satisfies readonly ControlNameDef[];

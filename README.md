@@ -7,11 +7,12 @@ See [`OVERCREW_CLAUDE_CODE_PROMPT.md`](OVERCREW_CLAUDE_CODE_PROMPT.md) for the b
 
 ## Status
 
-**Stage 3 — first cross-player mechanic.** On start each player gets a small
-generated panel and one instruction naming a control by its label — which may be
-on someone else's phone. Shout it, the owner acts, the server validates and
-issues the next instruction. Server-authoritative; per-player state (you only
-ever receive your own panel and instructions). No timers, no health yet.
+**Stage 4 — randomized balanced panels.** Each player gets a distinct 4–6
+control panel of all six control types (button, toggle, direction, shape
+selector, slider, dial), balanced by total complexity rather than count.
+Instructions cover every type — `ДАВЛЕНИЕ → 67 ± 3`, `ГИРОСКОП → ВЛЕВО`,
+`ФАЗОВРАЩАТЕЛЬ → 6`. Server-authoritative; per-player state. No timers, no health
+yet.
 
 The Stage 1 control playground (full V1 control alphabet) is still reachable at
 `/#playground`.

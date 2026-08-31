@@ -10,25 +10,44 @@ function intentFor(game: Game, instructionId: string): {
 } {
   const ins = game.instructions.find((i) => i.id === instructionId)!;
   const control = game.controls.find((c) => c.id === ins.controlId)!;
-  const intent: Intent =
-    ins.expected.kind === "press"
-      ? { type: "press", controlId: control.id }
-      : ins.expected.kind === "toggle"
-        ? { type: "set", controlId: control.id, value: ins.expected.on }
-        : { type: "set", controlId: control.id, value: ins.expected.value };
+  const e = ins.expected;
+  let intent: Intent;
+  switch (e.kind) {
+    case "press":
+      intent = { type: "press", controlId: control.id };
+      break;
+    case "toggle":
+      intent = { type: "set", controlId: control.id, value: e.on };
+      break;
+    case "direction":
+    case "select":
+      intent = { type: "set", controlId: control.id, value: e.value };
+      break;
+    case "slider":
+      intent = { type: "set", controlId: control.id, value: e.task.targetValue };
+      break;
+    case "dial":
+      intent = { type: "set", controlId: control.id, value: e.position };
+      break;
+  }
   return { ownerId: control.ownerPlayerId!, intent };
 }
 
 describe("Game", () => {
-  it("generates one panel + one instruction per player from a seed", () => {
+  it("generates 4–6-control panels + one instruction per player from a seed", () => {
     const g = new Game(PLAYERS, "fixed-seed");
     expect(new Set(g.controls.map((c) => c.ownerPlayerId))).toEqual(
       new Set(PLAYERS),
     );
+    for (const p of PLAYERS) {
+      const n = g.controls.filter((c) => c.ownerPlayerId === p).length;
+      expect(n).toBeGreaterThanOrEqual(4);
+      expect(n).toBeLessThanOrEqual(6);
+    }
     expect(g.instructions).toHaveLength(2);
   });
 
-  it("completes an instruction and issues a replacement for the same recipient", () => {
+  it("completes an instruction, replaces it, and does not re-target the same control", () => {
     const g = new Game(PLAYERS, "seed-1");
     const first = g.instructions[0]!;
     const { ownerId, intent } = intentFor(g, first.id);
@@ -37,9 +56,10 @@ describe("Game", () => {
     expect(res.completed).toBe(true);
     expect(g.instructions).toHaveLength(2); // one retired, one added
     expect(g.instructions.some((i) => i.id === first.id)).toBe(false);
-    expect(
-      g.instructions.filter((i) => i.shownToPlayerId === first.shownToPlayerId),
-    ).toHaveLength(1);
+    const replacement = g.instructions.find(
+      (i) => i.shownToPlayerId === first.shownToPlayerId,
+    )!;
+    expect(replacement.controlId).not.toBe(first.controlId);
   });
 
   it("ignores an intent from a player who does not own the control", () => {

@@ -350,3 +350,38 @@ The host badge label changed from ХОЗЯИН to КАПИТАН (also the lobby
 and the server's not-host error). `DEFAULT_NICKNAMES` (10 space words) lives in
 `shared/room.ts`; the PreLobby offers one as a grey placeholder with an "↻
 другой" reshuffle, and submitting an empty field uses the shown suggestion.
+
+---
+
+## 2026-08-31 — Stage 4: randomized balanced panels
+
+### D47. Provisional name pools expanded to ~42
+`names.ts` now has ~7 names per game type (`toggle` +2, `shapeSelector` +3,
+`direction` +6, `slider` +6, `dial` +7). Enough for a 4-player game (~24
+controls). **All the non-`button` names remain provisional** and still want a
+spoken-vocabulary review.
+
+### D48. Panels are 4–6 controls, balanced by total complexity not by count
+`generatePanels` fills each panel greedily: pick a type by "how close its 1–10
+complexity is to what's still needed per remaining slot", penalise a type
+already stacked on this panel (so no one gets 4 selectors), add a little jitter
+so heavy types (slider/dial = 5) still show up. Stop once the panel has
+≥ `MIN_PANEL_CONTROLS` (4) *and* total ≥ `TARGET_PANEL_COMPLEXITY` (15), or hits
+`MAX_PANEL_CONTROLS` (6). Observed: panels 4–6 controls, totals ~12–19, spread
+within one game ≤ ~5, every type appears regularly, ≤ 3 of any one type per
+panel. All labels globally unique; seed logged. Master prompt §7's "sophisticated
+algorithm not needed initially" — this is the simple version.
+
+### D49. Six control types in play; slider/direction/dial expectations
+`GAME_TYPES` = button, toggle, direction, shapeSelector, slider, dial (was 3).
+`ExpectedOutcome` gained `direction {value}`, `slider {task: SliderTask}`,
+`dial {position}`; `validateIntent` / `applyIntentToControl` / `expectationMet` /
+`instructionText` handle them. Slider instructions are `L → target ± tolerance`
+(reusing `SliderTask` / `isSliderValueAccepted`); the acting player's slider
+still never shows the tolerance band (D29) — they hit it from the shouted number.
+`hold`/`mash` stay out until Stages 6/7.
+
+### D50. Replacement instruction never re-targets the just-completed control
+`nextInstruction` takes an optional `avoidControlId`; `Game.applyIntent` passes
+the completed control's id so the next instruction for that recipient points
+somewhere else.

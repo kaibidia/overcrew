@@ -38,7 +38,7 @@ export function PreLobby({ api }: { api: RoomApi }) {
   return (
     <div className="pre">
       <h1 className="pre__logo">OVERCREW</h1>
-      <p className="pre__sub">кооперативный крикун · STAGE 3</p>
+      <p className="pre__sub">Shouting co-op party game</p>
 
       <div className="pre__tabs" role="tablist">
         <button

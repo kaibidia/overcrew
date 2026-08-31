@@ -129,12 +129,17 @@ interface Instruction {
 type ExpectedOutcome =
   | { kind: "press"; fromCount: number }   // met when pressCount > fromCount
   | { kind: "toggle"; on: boolean }
-  | { kind: "select"; value: string | number };
-// later: sliderTask (targetValue ± tolerance), hold(ms), taps(n); + deadlineAt (Stage 5)
+  | { kind: "direction"; value: Direction }
+  | { kind: "select"; value: string | number }      // shapeSelector
+  | { kind: "slider"; task: SliderTask }             // targetValue ± tolerance
+  | { kind: "dial"; position: number };              // 0-indexed; shown +1
+// later: hold(ms), taps(n); + deadlineAt (Stage 5)
 ```
 
-Text: `ТУРБОЖАБА → ◆`, `НЕЙТРОННЫЙ КРАН → ВКЛ`, `ПЛАЗМОНАСОС → НАЖАТЬ`. Never
-produce ownership-implying text ("твоя задача", "свой").
+Text: `ТУРБОЖАБА → ◆`, `НЕЙТРОННЫЙ КРАН → ВКЛ`, `ПЛАЗМОНАСОС → НАЖАТЬ`,
+`ГИРОСКОП → ВЛЕВО`, `ДАВЛЕНИЕ → 67 ± 3`, `ФАЗОВРАЩАТЕЛЬ → 6`. Never produce
+ownership-implying text ("твоя задача", "свой"). A slider instruction's tolerance
+band is never drawn on the acting player's slider (D29).
 
 **Intent + validation.** Client sends `Intent`
 (`{ type:"press", controlId } | { type:"set", controlId, value }`) via
@@ -251,11 +256,12 @@ demands of one player*. On the **type**, never the name.
 
 `getPanelComplexity(controls)` = `Σ CONTROL_COMPLEXITY[c.definition.kind]`.
 
-A future Stage 4 generator balances players by keeping **panel-complexity totals**
-close — *not* by giving everyone the same control count. One player may hold 4
-heavy controls (~23) while another holds 6 light ones with a comparable total.
-Aim for 4–6 controls per player; seeded so runs reproduce. No generator is built
-yet.
+`generatePanels` (Stage 4) balances players by keeping **panel-complexity
+totals** close — *not* by giving everyone the same control count. It fills each
+panel greedily toward `TARGET_PANEL_COMPLEXITY` (15), 4–6 controls, choosing
+types by how close their weight is to what's still needed and penalising repeats.
+Observed totals land ~12–19 with a within-game spread of ≤ ~5. Seeded and the
+seed is logged. Not sophisticated — the simple version per master prompt §7.
 
 ### Complexity is not task difficulty
 
@@ -303,7 +309,7 @@ Completion is decided **only** here. Clients never report success.
 | 1 | Full control model: `ControlType` (8), `ControlDefinition`, `ControlName` registry + `compatibleTypes`, `ControlInstance` (`instantiateControl`), `CONTROL_COMPLEXITY`, `getPanelComplexity`, `hasUniqueLabels`. First task primitive `SliderTask` + `isSliderValueAccepted`. Local interaction only; `hold`/`mash` multiplayer semantics deferred to 6/7. |
 | 2 | `Player`, `RoomState.code`, persistent `playerId`, `connection` |
 | 3 | ✅ `Instruction` + `ExpectedOutcome`, `Intent`, `generatePanels` / `generateInstructions` / `nextInstruction`, pure `validateIntent`, `buildPlayerView` + `game:view` per-socket serialization. button/toggle/shapeSelector. Server-authoritative completion + replacement. No timers/health. |
-| 4 | `generatePanels` (balanced by `getPanelComplexity`), `generateInstruction` + target balancing, `seed` |
+| 4 | ✅ `generatePanels` → 4–6 controls/player of all six `GAME_TYPES`, balanced by total complexity (not count); ~42 provisional names; `ExpectedOutcome`/`validateIntent`/`instructionText` for direction/slider/dial; `nextInstruction` avoids re-targeting the just-completed control; seed logged. |
 | 5 | `ShipState`, `deadlineAt`, `status: "expired"`, difficulty progression |
 | 6 | `hold` kind, `HOLD_STARTED/ENDED`, synchronized-hold condition |
 | 7 | `mash` kind, shared/independent tap counters |

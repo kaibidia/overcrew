@@ -3,15 +3,21 @@ import { ControlRenderer } from "../controls/ControlRenderer";
 import type { ControlEvent } from "../controls/types";
 import type { RoomApi } from "../net/useRoom";
 
-/** Map a control widget event to a server intent (Stage 3 types only). */
+/** Map a control widget event to a server intent. */
 function toIntent(controlId: string, e: ControlEvent): Intent | null {
   switch (e.type) {
     case "press":
       return { type: "press", controlId };
     case "toggle":
       return { type: "set", controlId, value: e.on };
+    case "direction":
+      return { type: "set", controlId, value: e.value };
     case "select":
       return { type: "set", controlId, value: e.value };
+    case "slider":
+      return { type: "set", controlId, value: e.value };
+    case "dial":
+      return { type: "set", controlId, value: e.position };
     default:
       return null;
   }

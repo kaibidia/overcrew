@@ -66,6 +66,7 @@ export class Game {
         this.controls,
         this.instructions,
         this.live,
+        done.controlId, // don't immediately re-target the control just completed
       ),
     );
     return { changed: true, completed: true };
