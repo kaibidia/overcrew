@@ -528,6 +528,164 @@ Every stage must create something manually testable.
 
 ---
 
+# 12a. Future game modes (architectural context — NOT current scope)
+
+Overcrew is designed around one reusable core idea:
+
+> A crew of players jointly operates one complex system through distributed
+> physical controls, time pressure, and verbal coordination.
+
+Genre / short description:
+
+**shouting co-op game**
+
+The first implementation stays focused on the current space-themed game. But do
+**not** unnecessarily hard-code the core control/task architecture to a
+spaceship — the same interaction system may later power other game modes.
+
+There are currently exactly **three** top-level game-mode directions.
+
+## 1. Space Disaster
+
+The current primary mode and the one we build first.
+
+Players are the crew of a malfunctioning spacecraft. Gameplay focuses on:
+
+- incoming instructions;
+- shouting control names and values;
+- executing actions on controls owned by different players;
+- simultaneous failures;
+- emergency procedures;
+- synchronized actions;
+- keeping the ship operational under increasing pressure.
+
+This is the implementation priority. **Do not delay it to support the modes
+below.**
+
+## 2. Restaurant Rush
+
+*Future concept only. Do not implement now.*
+
+Players collectively operate a restaurant kitchen during a busy service. Same
+cooperative principles, but the challenge shifts toward:
+
+- parallel processes;
+- timing;
+- coordinating preparation;
+- starting actions at the correct moment;
+- making multiple components finish at approximately the same time;
+- handling several orders simultaneously.
+
+Example — a dish requires:
+
+```text
+steak:   20 seconds
+pasta:   12 seconds
+sauce:    8 seconds
+plating:  4 seconds
+```
+
+The goal is **not** to complete every action as fast as possible. Players must
+coordinate **when** processes start so the complete dish reaches the pass
+together. This introduces an important future cooperative pattern:
+
+> Multiple independent processes must converge on the same completion window.
+
+The same primitive controls — Button, Toggle, Direction, Shape Selector, Slider,
+Dial, Hold, Mash — may be reused to represent kitchen equipment and actions.
+
+## 3. Giant Mech Battle
+
+*Future concept only. Do not implement now.*
+
+A crew jointly operates one enormous combat machine. No individual player
+controls the whole mech. Movement, weapons, defense, cooling, stabilization,
+power and other systems are distributed across the crew.
+
+High-level actions — `ATTACK`, `BLOCK`, `DODGE`, `ADVANCE`, `CHARGE`, `REPAIR` —
+eventually translate into coordinated procedures over the existing control
+primitives.
+
+Example attack procedure:
+
+```text
+ГИРОСКОП → ВПРАВО
+ДАВЛЕНИЕ → 74 ± 4
+СТАБИЛИЗАТОР → УДЕРЖИВАТЬ
+ИОННЫЙ ПУСКАТЕЛЬ → НАЖАТЬ
+```
+
+Completing the procedure makes the mech perform the corresponding action.
+
+**Boss Battle** and **PvP** are **not** separate top-level modes — they are two
+variants of Giant Mech Battle:
+
+- **Boss Battle** — one crew cooperatively fights an AI-controlled giant enemy.
+  Boss behavior creates incoming attacks, attack windows, defensive procedures,
+  vulnerable phases, emergency repairs, temporary system failures. The crew
+  alternates between operating the mech offensively and reacting to the boss.
+- **PvP (team vs team)** — two crews control two opposing mechs (e.g. 4v4). One
+  team's successful actions create situations the other team must react to
+  (Team A prepares an attack → Team B gets an incoming-attack warning → Team B
+  attempts a coordinated block/dodge → failure causes damage).
+
+Damage should eventually be able to affect the **machine itself**, not only an HP
+number — e.g. a slider slowly drifts, a toggle occasionally disengages, a Hold
+takes longer, a weapon is temporarily unavailable, a subsystem must be repaired
+before normal use. Combat can then make the mech *harder to operate*.
+
+## Architecture guidance
+
+These future modes are **context, not scope**.
+
+- Do **not** build a generic mega-engine in advance.
+- Do **not** introduce abstractions merely because a future mode might need them.
+- Follow **YAGNI**.
+
+However, when two implementation choices are equally simple, prefer the one that
+does **not** unnecessarily assume:
+
+- every game is about a spaceship;
+- every task represents a malfunction;
+- every successful task only repairs health;
+- every control belongs to a specific spaceship subsystem.
+
+The reusable core conceptually remains:
+
+```text
+CONTROL PRIMITIVES
+        ↓
+CONTROL INSTANCES
+        ↓
+TASKS / COOPERATIVE PROCEDURES
+        ↓
+GAME-MODE CONSEQUENCES
+```
+
+Space Disaster is simply the first consumer of this system.
+
+## Deferred: Distributed Knowledge
+
+Do **not** currently expand toward puzzle-heavy distributed-information
+mechanics: one player seeing half a solution; combining clues to determine what
+action is required; hidden rules known only to another player; communication
+puzzles where the team must first deduce the solution. These may be explored
+later as a different style of cooperative play.
+
+For the current core experience, prioritize:
+
+> We know what needs to be done, but coordinating everyone quickly enough is
+> difficult.
+
+rather than:
+
+> We must first collectively figure out what needs to be done.
+
+The desired current experience is **fast, physical, noisy, reactive**, and
+suitable for a party game.
+
+---
+
 # 13. Staged implementation
 
 Review this plan after research and modify it if necessary.
