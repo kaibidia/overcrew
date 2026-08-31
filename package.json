@@ -1,0 +1,23 @@
+{
+  "name": "overcrew",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Overcrew — mobile-first browser cooperative shouting party game",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm run dev --workspace @overcrew/server",
+    "dev:web": "npm run dev --workspace @overcrew/web",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

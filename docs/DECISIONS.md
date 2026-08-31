@@ -1,0 +1,352 @@
+# DECISIONS.md — Overcrew
+
+Chronological log of decisions that would otherwise be re-litigated or rediscovered.
+One entry per decision. Keep it terse.
+
+---
+
+## 2026-08-31 — Stage 0: research + architecture
+
+### D1. Stack: TypeScript + React/Vite + Node + Socket.IO + shared package
+Server-authoritative, event-driven, in-memory rooms. Rejected Colyseus and boardgame.io
+(framework lock-in, sync models heavier than our low-frequency event traffic needs) and raw
+`ws` (would re-implement rooms, acks, reconnect). No database — rooms are intentionally
+ephemeral. See `ARCHITECTURE.md §2`.
+
+### D2. Monorepo: `apps/web`, `apps/server`, `packages/shared`
+npm workspaces (built in, no extra tooling). All pure game logic (panel/instruction
+generation, balancing, validation, seeded RNG) lives in `packages/shared` so it is
+unit-testable without a browser and shared verbatim by client and server.
+
+### D3. Room codes, not UUIDs
+4 uppercase chars from an alphabet with no vowels and no ambiguous glyphs (`0 1 I O`
+excluded) → shout-friendly, collision-resistant, no accidental words. OpenSpaceTeam's
+`uuid4` room ids are a known usability wart we are not repeating.
+
+### D4. Persistent identity + grace-period reconnection
+Each player gets a persistent `playerId` + `token` (stored in `localStorage`), issued on
+first connect. Socket id is transport-only, never identity. On disconnect the seat is marked
+`disconnected` and held ~60 s; the game does **not** end. OpenSpaceTeam disposes the whole
+game on any disconnect — the single biggest flaw in the reference implementation. Minimal
+version lands in **Stage 2** (moved earlier than the master prompt implies) because it is
+expensive to retrofit.
+
+### D5. Per-player state filtering on the server
+Server holds full `RoomState`; each client receives only its own panel, its own
+instructions, and public room/ship state. Pattern borrowed from boardgame.io `playerView`.
+Never broadcast full state and filter client-side. Applies from **Stage 3** (first private
+state).
+
+### D6. Snapshot-then-events sync; protocol version on every payload
+Full per-player snapshot on (re)connect, targeted events afterwards. Every message carries
+`PROTOCOL_VERSION`; mismatch → client asks user to refresh rather than misbehaving.
+
+### D7. No game loop; one ~1 Hz timer from Stage 5
+Instruction deadlines and health drain run on a single low-frequency timer introduced in
+Stage 5. Stages 1–4 have no timers at all. Overcrew is event-paced, not an action game.
+
+### D8. Control definition / instance / layout are separate
+`ControlDefinition` (mechanic) vs `ControlInstance` (named, owned, stateful) vs on-screen
+layout (client-only, a vertical stack of 4–6). The server never models grid geometry.
+OpenSpaceTeam couples all three in one generation pass — explicitly rejected.
+
+### D9. Roadmap deltas from the master prompt
+(a) Stage 1 also writes the `packages/shared` model skeleton (`model.ts`, `rng.ts`,
+`protocol.ts` version) — rendering only, no generation/networking.
+(b) Room codes from Stage 2.
+(c) Minimal reconnection in Stage 2.
+(d) Per-player serialization from Stage 3.
+(e) Build the "server-side progress accumulator" abstraction once in Stage 6; Stage 7
+reuses it. Separate test checkpoints kept.
+Core milestone unchanged: cross-player instruction→control→validate loop = Stage 3.
+
+### D10. UI language / naming
+Game UI and instructions in Russian; game name "Overcrew" stays English. Instruction text
+always contains the control name verbatim and never implies ownership
+(no "твоя задача" / "свой"). Panel header wording stays neutral ("ИНСТРУКЦИИ").
+
+### D11. Instruction targeting independence is a hard invariant (planned)
+`instruction.shownToPlayerId` and `control.ownerPlayerId` may be equal or different; ~1 in 5
+instructions target a control the recipient owns, and this is never special-cased. Tests in
+`packages/shared` must assert both the equal and unequal cases occur.
+
+---
+
+## 2026-08-31 — Stage 1: mobile UI playground
+
+### D12. Toolchain: Node installed via Homebrew; npm workspaces
+Node was not present on the dev machine; installed `node` via Homebrew (currently
+v26, npm 11). Monorepo uses **npm workspaces** (no pnpm). Packages:
+`@overcrew/shared` (TS source consumed directly, `main`/`exports` → `src/index.ts`)
+and `@overcrew/web` (React 18 + Vite 5). Root scripts: `npm run dev`, `npm test`,
+`npm run typecheck`.
+
+### D13. Web consumes `@overcrew/shared` from TS source, not a build
+`vite.config.ts` sets `optimizeDeps.exclude: ["@overcrew/shared"]` so Vite
+transpiles the shared source on the fly and HMR covers shared changes. `tsc`
+resolves it via the package `types` field. No build step for `shared`.
+
+### D14. Stage 1 shared surface: `protocol.ts`, `rng.ts`, `model.ts`, `panel.ts`
+Per the roadmap delta D9(a). `ControlKind` is exactly the six Stage 1 kinds
+(button, toggle, selector, direction, knob, slider); `hold`/`mash` are added in
+their own stages, not stubbed now. `COMPLEXITY_WEIGHTS` is a standalone map (the
+single source of weights) rather than a field on each `ControlDefinition`.
+`createSamplePanel()` is a fixed hand-authored panel — **no generation yet**
+(that is Stage 4).
+
+### D15. Control widgets are data-driven and mechanic-separated
+`ControlRenderer` switches on `definition.kind`; each mechanic is its own
+component receiving a semantic `ControlEvent`. Layout is a plain vertical stack in
+CSS — the model carries no geometry (D8). Knob and slider use discrete −/+ pads
+plus tappable stops rather than drag, per docs/GAME_MODEL.md ("early prototypes").
+
+### D16. Verified headlessly with Playwright/Chromium
+No `chromium-cli` on the machine; installed `playwright` + Chromium in the
+scratchpad (not a repo dependency) to screenshot and drive the playground at a
+390×844 mobile viewport. Real-phone testing on the LAN remains the Stage 1
+acceptance check.
+
+### D17. Finalized the Overcrew V1 control alphabet — exactly eight kinds
+`button, toggle, direction, selector, slider, knob, hold, mash`. No more control
+types will be added in V1 (compound controls — sequences, keypads, linked
+controls — are explicitly out). `packages/shared` `ControlKind` is now this full
+set; `createSamplePanel()` is the eight-control demo alphabet (not a player
+panel, which stays 4–6 and is generated in Stage 4). `hold` and `mash` are
+implemented as **local interaction only** — their multiplayer semantics
+(synchronized hold, team mash) are still Stage 6 / Stage 7.
+
+### D18. ТУРБОЖАБА is a shape selector; shape is the value
+Values are the four geometric glyphs `● ▲ ■ ◆` (`SHAPES` in `panel.ts`), all
+shown at once as a segmented control. Colour is never part of the semantic value.
+The generic `selector` mechanic is unchanged — only this instance's values.
+
+### D19. ФАЗОВРАЩАТЕЛЬ knob is directly dragged, no +/- buttons
+The knob is rotated by touching the dial and dragging around its centre; on
+release it snaps to the nearest of 8 positions. Implemented with **Pointer
+Events** (one path for mouse + touch), `setPointerCapture`, and `touch-action:
+none` to suppress page scroll during the gesture. The visual angle is
+**accumulated from pointer-angle deltas**, not derived from one absolute angle,
+so crossing the −180°/+180° boundary never makes the dial jump. Positions are
+stored 0-indexed and presented 1-indexed (1–8). Arrow keys nudge it for
+accessibility; there is deliberately no visible increment/decrement fallback.
+
+### D20. Playground widgets remount on СБРОС
+`PlaygroundState.generation` is bumped on reset and folded into each control's
+React `key`, so widgets with internal state (hold progress, dial drag angle) are
+cleared cleanly rather than reconciled.
+
+---
+
+## 2026-08-31 — Stage 1: control-model refactor (type / name / instance / complexity)
+
+### D21. Control type, name, instance and complexity are four separate concepts
+The model must scale to ~24 control instances across 4 players (4–6 each), with
+interaction types repeating freely. So:
+
+- **ControlType** — the interaction: `button, toggle, direction, shapeSelector,
+  slider, dial, hold, mash`. Exactly these 8 for V1; no compound controls yet.
+  (Renamed from the earlier `ControlKind`; `knob`→`dial`, `selector`→
+  `shapeSelector`.)
+- **ControlName** (`names.ts`) — a curated visible label plus `compatibleTypes`,
+  the interaction types that name may be instantiated as. The model deliberately
+  does **not** assume "one name = one type forever", but `compatibleTypes` is
+  hand-curated to avoid nonsense (e.g. `ДАВЛЕНИЕ` → `["slider","dial"]`,
+  `ФАЗОВРАЩАТЕЛЬ` → `["dial","toggle"]`; the button pool stays `["button"]`
+  until we decide otherwise). Name pools are approved manually in small batches
+  so the spoken vocabulary stays distinct under noise — no auto-generated pools.
+- **ControlInstance** — `{ id, nameId, label, definition, ownerPlayerId?, state }`.
+  `definition.kind` is the type and carries params (slider range, dial positions,
+  selector values). `label` is denormalized from the name registry.
+  `instantiateControl(id, nameId, definition)` resolves the label and throws if
+  the definition's type is not in the name's `compatibleTypes`.
+- **ControlComplexity** — `CONTROL_COMPLEXITY: Record<ControlType, number>` on a
+  **1–10** scale (scale headroom for future types), attached to the TYPE, never
+  the name: `button 1, toggle 2, direction 3, shapeSelector 3, slider 5, dial 5,
+  hold 6, mash 7`.
+
+### D22. Panel complexity = sum of control TYPE complexity
+`getPanelComplexity(controls)` sums `CONTROL_COMPLEXITY[c.definition.kind]`. A
+future Stage 4 generator balances players by keeping these totals close, not by
+equal control counts — one player may hold 4 heavy controls, another 6 light
+ones. No generator is built yet.
+
+### D23. Control complexity is not task difficulty
+Control complexity ≈ how much attention/physical interaction one control demands
+of one player. Task difficulty (deadlines, concurrent tasks, synchronized
+actions, communication load, critical events) is separate and must never be
+folded into the base complexity score.
+
+### D24. Unique visible names within one active game
+`hasUniqueLabels` / `duplicateLabels` enforce that no two live controls share a
+label (players shout names). Different matches may reuse names. Repeated
+interaction *types* are expected and never constrained.
+
+### D25. Stage 1 playground names are examples, not definitions
+`ПЛАЗМОНАСОС, КРИОКЛАПАН, ГИРОСКОП, ТУРБОЖАБА, ДАВЛЕНИЕ, ФАЗОВРАЩАТЕЛЬ,
+СТАБИЛИЗАТОР, ИМПУЛЬСАТОР` remain the eight playground instances, but are now
+understood as one example instance per type. Approved wider pools so far: the
+five `button` names (`ПЛАЗМОНАСОС, АВАРИЙНЫЙ СБРОС, ИОННЫЙ ПУСКАТЕЛЬ, КВАНТОВЫЙ
+ЗВОНОК, ТУРБОСТАРТЕР`). Preserved interaction behaviour unchanged: shape
+selector `● ▲ ■ ◆`, drag-only 8-position dial, local hold/mash. Minor UI: mash
+label `ДАВИ` → `ЖМИ`.
+
+---
+
+## 2026-08-31 — Stage 1: precise slider + first task primitive
+
+### D26. Slider is a continuous drag with an integer 0–100 value
+The `ДАВЛЕНИЕ` slider changed from coarse 10-step taps to
+`{ min: 0, max: 100, step: 1 }` with a **directly-draggable thumb** (Pointer
+Events, `touch-action: none`, keyboard `role="slider"` with arrows/PageUp-Down/
+Home/End). The motion is continuous; the stored value is always an integer. The
+current value is shown as a large prominent number by the control (and the
+duplicate header readout is suppressed for the slider only). One `slider` event
+is emitted per settle — pointer-up or key press — not per drag frame, so the
+event log stays readable.
+
+### D27. First task primitive: `SliderTask { targetValue, tolerance }`
+A slider instruction targets an approximate value: `ДАВЛЕНИЕ → 67 ± 3` accepts
+64–70 inclusive. `packages/shared/src/tasks.ts` holds `SliderTask`,
+`sliderTaskRange` (inclusive, **clamped to [0, 100]** — `97 ± 5` → 92–100), and
+`isSliderValueAccepted` (≡ `Math.abs(value - target) <= tolerance`, both bounds
+inclusive, clamped). `tolerance: 0` means the exact value. This is the only task
+primitive so far — no generator, no difficulty scoring.
+
+### D28. Tolerance is task difficulty, not control complexity
+`CONTROL_COMPLEXITY.slider` stays **5** regardless of tolerance. Tolerance lives
+in the task model: larger → easier, smaller → harder (`± 0` hardest). Never fold
+it into the base control-complexity score (see D23).
+
+### D29. Never draw the tolerance band on the slider
+The accepted range is not shown on the track — no coloured target zone. The
+player hears/reads the requested value + tolerance and reaches it using the
+numeric readout. Showing the zone would remove the communication challenge. The
+playground *does* flash a post-release SUCCESS/`МИМО` indicator (local only).
+
+---
+
+## 2026-08-31 — Stage 2: room & lobby (multiplayer networking)
+
+### D30. `apps/server` — one Node process, Socket.IO, in-memory rooms
+`socket.io` v4 on a bare `http` server bound to `0.0.0.0:3001` (`PORT`/`HOST`
+env). Dev CORS is `origin: true`. `RoomManager` holds `Map<code, Room>` and
+`Map<token, code>` — no database, rooms vanish on restart (acceptable, per D1).
+Root `npm run dev` runs server + web together via `concurrently`.
+
+### D31. Client finds the server from `window.location.hostname`
+The web client connects to `${protocol}//${hostname}:3001`, so a phone that
+loaded the page from `http://<mac-ip>:5173` reaches the server at
+`http://<mac-ip>:3001` with no configuration. `VITE_SERVER_URL` /
+`VITE_SERVER_PORT` override it. Production (Stage 10) will serve the client from
+the server's own origin — the same derivation still works.
+
+### D32. Identity = persistent `playerId` + secret `token`, in `localStorage`
+Issued by the server on create/join, stored client-side as a `Session`
+(`{ playerId, token, roomCode }`). The Socket.IO socket id is transport only,
+never identity. On (re)connect the client emits `room:resume { token }` to
+reclaim its seat; a bad/expired token clears the session and drops the player to
+the start screen. Implements DECISIONS D4.
+
+### D33. 60 s disconnect grace; the room is never destroyed by a disconnect
+`disconnect` marks the seat `disconnected` and starts a 60 s timer
+(`GRACE_MS`). Only when that timer fires is the player removed — and only then is
+a new host promoted (earliest joiner, preferring a connected one) or the room
+disposed if it is now empty. A `resume` within the window cancels the timer.
+This is the single biggest fix over OpenSpaceTeam, which nukes the whole game on
+any drop.
+
+### D34. Stale-socket guard
+`markDisconnected(token, socketId)` starts the grace timer only if that socket
+still owns the seat (`member.socketId === socketId`). A second tab or a fast
+reconnect rebinds the seat to the new socket, so the old socket's later
+`disconnect` is ignored — no spurious "disconnected" flicker.
+
+### D35. Protocol shape
+Client→server events (`room:create/join/resume/leave/start`) all take a request
+object + a typed `Ack<T>` callback (`{ ok:true, data } | { ok:false, error, message }`).
+The server pushes `room:state` (a `RoomView`: code, phase, `PublicPlayer[]`,
+`protocolVersion`) to the whole room on every change. The client derives `youId`
+(from its session) and `canStart` (`shared/room.ts`) locally; the server
+re-validates start server-side. `PublicPlayer` never carries the token.
+
+### D36. Stage 1 playground kept at `#playground`
+The default route is the Stage 2 room flow; `location.hash === "#playground"`
+still renders the control playground for hardware testing.
+
+---
+
+## 2026-08-31 — Stage 3: first cross-player mechanic
+
+### D37. Provisional name-pool expansion
+`packages/shared/src/names.ts` grew from 12 to 21 names so a 2–5-player game has
+enough distinct labels: `button` 5 → 7, `toggle` 1 → 5, `shapeSelector` 1 → 4.
+The new `toggle`/`shapeSelector`/extra-`button` names are **provisional** —
+generated in the requested style but not yet through a spoken-vocabulary review.
+Flag for approval.
+
+### D38. Stage 3 panel generation — `generatePanels` (shared, pure, seeded)
+On `room:start` the server builds one panel per player: prefers one each of
+`button` / `toggle` / `shapeSelector`, borrows another type when a name pool runs
+dry (repeated types are fine, D17), scales `perPlayer` down (3 → 2) as players
+grow so labels stay globally unique (`hasUniqueLabels`). Generation uses only
+names dedicated to a single type (so `ФАЗОВРАЩАТЕЛЬ`/`ДАВЛЕНИЕ` are never
+instantiated as an off-type control here). No balancing by complexity yet
+(Stage 4).
+
+### D39. Instruction model — `Instruction` + `ExpectedOutcome`
+`{ id, controlId, controlLabel, shownToPlayerId, expected, text, status }`.
+`expected` is `press { fromCount } | toggle { on } | select { value }` — fully
+state-based (a button press is "pressCount increased since the instruction was
+made"), so completion is a pure predicate over `ControlState`. `text` always
+contains `controlLabel` verbatim (`ТУРБОЖАБА → ◆`, `НЕЙТРОННЫЙ КРАН → ВКЛ`).
+
+### D40. Targeting independence, enforced and tested
+`nextInstruction`: with probability `SELF_TARGET_CHANCE` (0.2) the target owner
+is the recipient; otherwise it is explicitly someone else. Among the allowed
+owners, the one with the fewest active instructions pointed at them is preferred;
+controls already targeted by an active instruction are skipped. Tests assert both
+self- and cross-targeting occur and that self is the minority.
+
+### D41. `validateIntent` is the single authority, and it is pure
+`validateIntent(game, playerId, intent)` (shared) mutates nothing: it returns the
+control's next state and the id of any instruction the intent completes. The
+server applies the result, retires the completed instruction and issues a
+replacement for the same recipient via `nextInstruction`. Acting on a control
+that matches no instruction is a valid no-op. Clients never decide success.
+
+### D42. Per-player serialization from Stage 3 (`PlayerView`)
+The server sends each socket only `buildPlayerView(room, playerId, game)` —
+public room state + that player's own panel + that player's own instructions.
+Other players' controls and instructions never leave the server. New events:
+`game:intent` (client→server, `Intent`) and `game:view` (server→client,
+`PlayerView`). `game:view` is re-sent on every game change and on resume.
+
+### D43. In-game disconnect is not fully handled yet
+A player who drops mid-game keeps their controls/instructions in the game state;
+instructions targeting them can't be completed until they return (their seat is
+held 60 s as in Stage 2, and resume re-sends their `PlayerView`). If they never
+return the game can stall. Proper mid-game player-loss handling is deferred to
+Stage 5 (timers / failure).
+
+### D44. Join errors are surfaced; the join button is never a silent dead-end
+Reported: joining with a bad code did nothing — the button was client-gated on
+`isValidRoomCode` and just sat disabled. Fix: the button is enabled whenever a
+code is present; the **server** validates it and returns "Неверный код" /
+"Комната не найдена", shown in the error banner. `enter`/`start` now also refuse
+when the socket is disconnected ("Нет связи с сервером") and time out after 6 s
+("Сервер не отвечает"). The connect splash falls through to the pre-lobby
+(offline state) after 4 s so an unreachable server is never an infinite spinner.
+
+### D46. Nicknames are unique within a room
+`joinRoom` rejects a nickname already held by any member — including a
+disconnected one still inside its 60 s grace window — with
+`AckError "nickname_taken"`. Comparison is case-insensitive on the normalized
+nickname. Players coordinate by shouting names, so two "Метеор" in one room is
+not allowed; the joiner gets an error and picks another. Different rooms are
+independent.
+
+### D45. Host badge is "КАПИТАН"; space-themed default callsigns
+The host badge label changed from ХОЗЯИН to КАПИТАН (also the lobby/PreLobby copy
+and the server's not-host error). `DEFAULT_NICKNAMES` (10 space words) lives in
+`shared/room.ts`; the PreLobby offers one as a grey placeholder with an "↻
+другой" reshuffle, and submitting an empty field uses the shown suggestion.
