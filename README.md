@@ -2,17 +2,18 @@
 
 Mobile-first browser-based cooperative shouting party game.
 
-See [`docs/`](docs/) for research, architecture, game model, and decisions.
+See [`docs/`](docs/) for research, architecture, game model, panel layout, and decisions.
 See [`OVERCREW_CLAUDE_CODE_PROMPT.md`](OVERCREW_CLAUDE_CODE_PROMPT.md) for the brief.
 
 ## Status
 
-**Stage 4 — randomized balanced panels.** Each player gets a distinct 4–6
-control panel of all six control types (button, toggle, direction, shape
-selector, slider, dial), balanced by total complexity rather than count.
-Instructions cover every type — `ДАВЛЕНИЕ → 67 ± 3`, `ГИРОСКОП → ВЛЕВО`,
-`ФАЗОВРАЩАТЕЛЬ → 6`. Server-authoritative; per-player state. No timers, no health
-yet.
+**Stage 5 — timed game loop.** Instructions now have deadlines; missing one
+drains ship health, completing one heals a little. A server-side 1 Hz loop ramps
+difficulty every 20 s (shorter deadlines, more concurrent instructions per
+player). HUD shows health / level / timer / progress; each instruction has a
+countdown bar. Game over at 0 health (or < 2 players); the captain restarts.
+Mid-game disconnects are handled. A full game runs from lobby to game over in
+~2–3 minutes.
 
 The Stage 1 control playground (full V1 control alphabet) is still reachable at
 `/#playground`.

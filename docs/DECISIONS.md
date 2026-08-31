@@ -385,3 +385,98 @@ still never shows the tolerance band (D29) — they hit it from the shouted numb
 `nextInstruction` takes an optional `avoidControlId`; `Game.applyIntent` passes
 the completed control's id so the next instruction for that recipient points
 somewhere else.
+
+---
+
+## 2026-08-31 — Stage 5: timed game loop
+
+### D51. The 1 Hz loop lives on the server `Game`; deadlines drive the pressure
+`Game.step()` runs once per second (`setInterval`, injectable clock for tests):
+expire overdue instructions, drain `health` by `difficulty.expirePenalty`, issue
+replacements, top each player up to `difficulty.instructionsPerPlayer`, and end
+the game at ≤ 0 health. No passive health drain — missing deadlines is the only
+way to lose health; completing an instruction heals a little (`completeHeal`,
+capped at `MAX_HEALTH` 100). This is the first server timer (DECISIONS D7).
+
+### D52. Difficulty ramps by elapsed time
+`levelForElapsed(ms)` = 1 + floor(ms / 20 000). `difficultyFor(level)`:
+`deadlineMs` 22 s → floor 6 s (−2 s/level), `instructionsPerPlayer` 1 → 2 (L3)
+→ 3 (L6), `expirePenalty` 6 + level. A "do nothing" 2-player game dies in ~75 s;
+a playing 3–4-player crew lasts ~2–3 min before the ramp outruns them. Difficulty
+is *coordination pressure* (more concurrent tasks, shorter deadlines), never
+fiddlier controls (master prompt §13 Stage 5).
+
+### D53. `RoomPhase "gameover"`; host restarts
+At 0 health the server sets `room.phase = "gameover"` and broadcasts a final
+`game:view` with `ship.phase = "gameover"` + `overReason`. The host gets a
+`room:restart` action (ЗАНОВО) that disposes the game and returns the room to
+`lobby`; others wait. `game:view` is broadcast every tick so the client can show
+a live timer / countdown bars (interpolated between the 1 Hz updates).
+
+### D54. Wire format: `InstructionView` (relative time), `ShipView`
+The client never sees absolute server timestamps. `buildPlayerView` maps each
+instruction to `{ …, remainingMs, totalMs }` (relative — no clock-skew between
+phone and Mac) and adds `ShipView { health, maxHealth, progress, level,
+elapsedMs, phase, overReason? }`.
+
+### D55. Mid-game player loss is handled (was D43)
+`Game.removePlayer(playerId)` (called from `RoomManager.onMemberDropped` when a
+seat's 60 s grace expires or the player leaves) removes their controls, retires
+instructions that referenced them (re-issuing ones still owed to a remaining
+player), and ends the game with `overReason "crew"` if fewer than two players
+remain. A player who drops and returns *within* the grace window resumes
+normally and gets a fresh `game:view`.
+
+---
+
+## 2026-08-31 — Gameplay panel layout redesign
+
+### D56. Gameplay screen is a non-scrolling instrument panel
+The vertically-scrolling list of large control cards is gone. `GameScreen` is
+`100dvh; overflow: hidden` with `body.no-scroll`; the instruction strip + the
+whole panel are always visible (core requirement — scrolling to find a control
+is friction, not difficulty). Minimum supported gameplay viewport: **≈ 360 × 620
+usable px**. Full rules in `docs/PANEL_LAYOUT.md`.
+
+### D57. `ControlType` ≠ layout footprint; slider has an orientation
+`apps/web/src/game/layout.ts` (`chooseLayout`) — a small deterministic curated
+system, NOT a bin-packer — assigns each control a footprint on a 4-column
+lattice (button `2×1`/`2×2`/`4×1`, dial & direction `2×2`, shapeSelector `4×1`,
+slider `4×1` horizontal or `2×2` vertical) and first-fits them into an exact row
+count so the panel never overflows. `SliderControl` gained an `orientation` prop
+(same 0–100/step-1 + tolerance behaviour either way). Variety comes from footprint
+choice, slider orientation and a one-per-panel "feature" promotion — no
+procedural packing engine (YAGNI).
+
+### D58. Widgets fill their cell; state lives in the control
+Widget CSS for the panel is scoped to `.pc__widget` (the Stage 1 playground's
+`ControlCard` is untouched) and uses container-query units so dial ticks / fonts
+scale to the cell. The `.pc` housing is a thin border, not a padded card. The HUD
+is one compact strip; the instruction strip is capped at `32dvh`. Control names
+(`.pc__name`, bold, up to 2 lines) are the scanning priority after the
+instructions themselves. Extracted `ControlWidget` (bare surface) shared by the
+playground's `ControlRenderer` and the gameplay `PanelGrid`.
+
+### D59. Player-facing copy cleanup
+Removed the `STAGE 3` dev label and `кооперативный крикун` from the start screen;
+subtitle is now `shouting co-op game`.
+
+### D60. Layout dead-space fix — candidate scoring + hole-filling
+`chooseLayout` now tries several candidate footprint sets (taller vertical
+sliders `2×3`/`2×4`, all-horizontal sliders, feature button, promoted small),
+scores each (`−deadCells·8 − rows·1.5 + longSlider + feature + variety`), and
+runs `fillHoles` on the winner — a `2×1` Button/Toggle/Hold/Mash directly above
+an empty cell grows down into it. The reported `[slider,direction,dial,
+shapeSelector]` panel now puts the vertical slider at a full `2×4` with no dead
+space and a much longer track. Still not a bin-packer — ≤ ~8 candidates, a
+one-line score.
+
+### D61. Standard Button is a round physical push button
+Was a rectangular app button with a press counter and "НАЖАТЬ". Now
+`ButtonControl` renders a round pressable cap (`.pushbtn__cap`) — no counter, no
+label, obvious idle / depressed / just-activated (cyan flash) states, size scales
+with the cell via `cqmin`, never distorted to a rectangle. "НАЖАТЬ" stays in the
+instruction stream (task language), not on the control. Mash keeps its `N / 12`
+counter + progress and its rectangular shape so Button ≠ Mash is obvious. The
+`pressCount` prop is gone from `ButtonControl` (the server still tracks it for
+validation).

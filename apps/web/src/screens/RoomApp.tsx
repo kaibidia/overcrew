@@ -16,16 +16,18 @@ export function RoomApp() {
   const api = useRoom();
 
   let screen;
+  let inGame = false;
   if (!api.view) {
     screen = api.conn === "connecting" ? <Splash /> : <PreLobby api={api} />;
   } else if (api.view.phase === "lobby") {
     screen = <Lobby api={api} />;
   } else {
     screen = <GameScreen api={api} />;
+    inGame = true;
   }
 
   return (
-    <div className="room">
+    <div className={`room${inGame ? " room--game" : ""}`}>
       {api.error && (
         <div className="room__error" role="alert">
           <span>{api.error}</span>

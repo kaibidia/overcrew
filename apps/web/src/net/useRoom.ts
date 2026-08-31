@@ -33,6 +33,7 @@ export interface RoomApi {
   joinRoom: (code: string, nickname: string) => void;
   leave: () => void;
   start: () => void;
+  restart: () => void;
   sendIntent: (intent: Intent) => void;
   dismissError: () => void;
 }
@@ -168,7 +169,7 @@ export function useRoom(): RoomApi {
     setError(null);
   }, []);
 
-  const start = useCallback(() => {
+  const hostCmd = useCallback((event: string) => {
     const socket = socketRef.current;
     if (!socket?.connected) {
       setError("Нет связи с сервером.");
@@ -177,11 +178,14 @@ export function useRoom(): RoomApi {
     setError(null);
     socket
       .timeout(6000)
-      .emit(ClientEvent.Start, {}, (err: Error | null, r?: Ack<null>) => {
+      .emit(event, {}, (err: Error | null, r?: Ack<null>) => {
         if (err || !r) setError("Сервер не отвечает.");
         else if (!r.ok) setError(r.message);
       });
   }, []);
+
+  const start = useCallback(() => hostCmd(ClientEvent.Start), [hostCmd]);
+  const restart = useCallback(() => hostCmd(ClientEvent.Restart), [hostCmd]);
 
   const sendIntent = useCallback((intent: Intent) => {
     socketRef.current?.emit(ClientEvent.Intent, intent);
@@ -200,6 +204,7 @@ export function useRoom(): RoomApi {
     joinRoom,
     leave,
     start,
+    restart,
     sendIntent,
     dismissError,
   };

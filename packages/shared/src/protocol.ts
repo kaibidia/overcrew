@@ -53,6 +53,8 @@ export const ClientEvent = {
   Resume: "room:resume",
   Leave: "room:leave",
   Start: "room:start",
+  /** Stage 5: host sends the room back to the lobby after game over. */
+  Restart: "room:restart",
   /** Stage 3: player intent — `Intent` payload (game.ts). */
   Intent: "game:intent",
 } as const;

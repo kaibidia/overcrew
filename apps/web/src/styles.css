@@ -164,41 +164,63 @@ button {
   justify-content: center;
 }
 
-/* ---- Button --------------------------------------------------------- */
+/* ---- Button — physical round push button --------------------------- */
 
-.big-button {
+.pushbtn {
   width: 100%;
-  min-height: 76px;
-  border-radius: 12px;
-  border: 1px solid var(--edge-bright);
-  background: radial-gradient(120% 140% at 50% 0%, #38507a 0%, #1a2740 70%);
-  color: var(--text);
+  height: 100%;
+  min-height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  letter-spacing: 0.2em;
-  font-weight: 800;
-  font-size: 1.1rem;
+  padding: 4px;
+}
+.pushbtn__cap {
+  --d: clamp(52px, min(96cqw, 96cqh), 168px);
+  width: var(--d);
+  height: var(--d);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 34%, #4d6ea8 0%, #2b3f63 55%, #16233a 100%);
+  border: 2px solid var(--edge-bright);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 6px 0 #0d1626;
+    0 6px 0 #0b1220,
+    0 8px 12px rgba(0, 0, 0, 0.45),
+    inset 0 3px 6px rgba(255, 255, 255, 0.18),
+    inset 0 -8px 14px rgba(0, 0, 0, 0.45);
   transition:
     transform 60ms ease,
-    box-shadow 60ms ease,
-    background 120ms ease;
+    box-shadow 90ms ease,
+    border-color 120ms ease;
+  position: relative;
 }
-.big-button:active {
-  transform: translateY(4px);
+.pushbtn__cap::after {
+  content: "";
+  position: absolute;
+  inset: 26%;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.1), transparent 70%);
+}
+.pushbtn__cap--down {
+  transform: translateY(5px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 2px 0 #0d1626;
-  background: radial-gradient(120% 140% at 50% 0%, #4a6ba6 0%, #24365a 70%);
+    0 1px 0 #0b1220,
+    0 2px 6px rgba(0, 0, 0, 0.5),
+    inset 0 3px 6px rgba(255, 255, 255, 0.12),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.55);
 }
-.big-button__count {
-  font-size: 0.85rem;
-  color: var(--cyan);
-  letter-spacing: 0.05em;
+.pushbtn__cap--flash {
+  border-color: var(--cyan);
+  box-shadow:
+    0 6px 0 #0b1220,
+    0 0 26px rgba(56, 225, 239, 0.55),
+    inset 0 3px 6px rgba(255, 255, 255, 0.22);
+}
+.pushbtn__cap--down.pushbtn__cap--flash {
+  box-shadow:
+    0 1px 0 #0b1220,
+    0 0 26px rgba(56, 225, 239, 0.55),
+    inset 0 3px 6px rgba(255, 255, 255, 0.18);
 }
 
 /* ---- Toggle -------------------------------------------------------- */
@@ -1013,52 +1035,396 @@ button {
   color: var(--text-dim);
 }
 
-/* ---- game screen (Stage 3) ---- */
+/* ============================================================
+   Gameplay screen — non-scrolling instrument panel
+   ============================================================ */
+
+body.no-scroll {
+  overflow: hidden;
+}
+.room--game {
+  max-width: none;
+  padding: 0;
+  border: 0;
+  height: 100dvh;
+  overflow: hidden;
+}
 
 .game {
+  height: 100dvh;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 6px;
+  padding: calc(env(safe-area-inset-top) + 6px)
+    calc(env(safe-area-inset-right) + 8px)
+    calc(env(safe-area-inset-bottom) + 6px)
+    calc(env(safe-area-inset-left) + 8px);
+  overflow: hidden;
 }
 .game__loading {
-  margin-top: 20vh;
-  text-align: center;
+  margin: auto;
   color: var(--text-dim);
   letter-spacing: 0.08em;
 }
-.game__instructions {
-  border: 1px solid var(--amber);
-  border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(255, 179, 64, 0.1) 0%, var(--bg-2) 60%);
-  padding: 12px 14px 14px;
+
+/* ---- HUD (single compact strip) ---- */
+
+.hud {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.game__ins-title {
-  margin: 0 0 8px;
+.hud__bar {
+  height: 7px;
+  border-radius: 999px;
+  background: #0c1420;
+  border: 1px solid var(--edge);
+  overflow: hidden;
+}
+.hud__fill {
+  display: block;
+  height: 100%;
+  transition:
+    width 250ms linear,
+    background 250ms ease;
+}
+.hud__fill--ok {
+  background: var(--green);
+}
+.hud__fill--warn {
+  background: var(--amber);
+}
+.hud__fill--crit {
+  background: var(--red);
+}
+.hud__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.hud__leave {
+  margin-left: auto;
+  color: var(--text-dim);
   font-size: 0.66rem;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.1em;
+  padding: 2px 4px;
+}
+
+/* ---- Instruction strip ---- */
+
+.instr {
+  flex: 0 0 auto;
+  max-height: 32dvh;
+  overflow: hidden;
+  border: 1px solid var(--amber);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 179, 64, 0.12) 0%, var(--bg-2) 70%);
+  padding: 6px 10px 7px;
+}
+.instr__title {
+  margin: 0 0 4px;
+  font-size: 0.56rem;
+  letter-spacing: 0.2em;
   color: var(--amber);
 }
-.game__instructions ul {
+.instr ul {
   margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
-.game__instruction {
-  font-size: 1.5rem;
+.instr__row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.instr__text {
+  font-size: clamp(1rem, 4.6vw, 1.35rem);
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   color: var(--text);
-  line-height: 1.2;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.game__ins-empty {
+.instr__bar {
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.instr__bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--amber);
+  transition: width 200ms linear;
+}
+.instr__bar-fill--low {
+  background: var(--red);
+}
+.instr__empty {
   margin: 0;
   color: var(--text-dim);
 }
-.game__panel {
+
+/* ---- The panel: 4-col lattice, exactly `--rows` equal tracks ---- */
+
+.panel-grid {
+  flex: 1 1 0;
+  min-height: 0;
+  margin: auto 0;
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), 1fr);
+  grid-template-rows: repeat(var(--rows, 4), 1fr);
+  gap: 6px;
+  max-height: calc(var(--rows, 4) * 104px + (var(--rows, 4) - 1) * 6px);
+}
+
+.pc {
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 2px;
+  padding: 3px 6px 4px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid rgba(63, 85, 120, 0.55);
+  overflow: hidden;
+}
+.pc--feature {
+  border-color: var(--edge-bright);
+  background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
+}
+.pc__name {
+  flex: 0 0 auto;
+  font-size: clamp(0.6rem, 3vw, 0.8rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  line-height: 1.02;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pc--wide .pc__name {
+  -webkit-line-clamp: 1;
+  font-size: clamp(0.68rem, 3.4vw, 0.9rem);
+}
+.pc__widget {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  container-type: size;
+}
+.pc__widget > * {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ---- Control widgets sized to fill their panel cell ---- */
+
+.pc__widget .pushbtn {
+  min-height: 0;
+}
+.pc__widget .pushbtn__cap {
+  --d: clamp(52px, min(94cqw, 94cqh), 180px);
+}
+
+.pc__widget .toggle {
+  height: auto;
+  min-height: 46px;
+  max-height: min(96px, 100cqh);
+  margin: auto 0;
+  padding: 5px 10px;
+}
+.pc--feature .pc__widget .toggle {
+  min-height: 64px;
+}
+.pc__widget .hold,
+.pc__widget .mash {
+  height: 100%;
+}
+.pc__widget .toggle__side {
+  font-size: clamp(0.62rem, 9cqmin, 0.85rem);
+}
+
+.pc__widget .selector {
+  width: 100%;
+  height: 100%;
+  gap: 4px;
+}
+.pc__widget .selector__cell {
+  min-height: 40px;
+  font-size: clamp(1rem, 20cqmin, 1.7rem);
+}
+
+.pc__widget .dpad {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  aspect-ratio: 1;
+  max-width: 100%;
+  margin: auto;
+  gap: 6%;
+}
+.pc__widget .dpad__btn {
+  font-size: clamp(0.9rem, 16cqmin, 1.5rem);
+}
+.pc__widget .dpad__center {
+  font-size: clamp(0.7rem, 11cqmin, 1.1rem);
+}
+
+.pc__widget .dial {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  align-items: center;
+}
+.pc__widget .dial__face {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  aspect-ratio: 1;
+  --size: min(100cqw, 100cqh);
+  --radius: 42cqmin;
+  container-type: size;
+}
+.pc__widget .dial__wheel {
+  inset: 15%;
+}
+.pc__widget .dial__notch {
+  top: 5%;
+  height: 26%;
+  width: 6%;
+  margin-left: -3%;
+}
+.pc__widget .dial__value {
+  font-size: clamp(1rem, 26cqmin, 2rem);
+}
+.pc__widget .dial__tick {
+  font-size: clamp(0.55rem, 11cqmin, 1rem);
+}
+
+.pc__widget .hold,
+.pc__widget .mash {
+  height: 100%;
+  min-height: 0;
+}
+.pc__widget .hold__label,
+.pc__widget .mash__label {
+  font-size: clamp(0.72rem, 13cqmin, 1.1rem);
+}
+.pc__widget .hold__pct,
+.pc__widget .mash__count {
+  font-size: clamp(0.62rem, 9cqmin, 0.9rem);
+}
+
+/* ---- Slider: horizontal fills width, vertical fills height ---- */
+
+.pc__widget .slider--h {
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+  gap: 6px;
+}
+.pc__widget .slider--h .slider__track {
+  height: clamp(32px, 34cqh, 46px);
+}
+.pc__widget .slider--h .slider__value {
+  font-size: clamp(1.3rem, 9cqw, 2rem);
+}
+
+.slider--v {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.slider--v .slider__head {
+  flex: 0 0 auto;
+  justify-content: center;
+  align-items: center;
+  line-height: 1;
+}
+.slider--v .slider__value {
+  font-size: clamp(1.1rem, 30cqmin, 1.9rem);
+  min-width: 0;
+}
+.slider--v .slider__track {
+  flex: 1 1 0;
+  min-height: 90px;
+  width: clamp(40px, 52cqmin, 56px);
+  height: auto;
+  border-radius: 999px;
+}
+.slider--v .slider__fill {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: auto;
+  height: calc(var(--frac, 0) * 100%);
+}
+.slider--v .slider__thumb {
+  left: 50%;
+  top: clamp(15px, calc((1 - var(--frac, 0)) * 100%), calc(100% - 15px));
+  margin-left: -15px;
+  margin-top: -15px;
+  transform: none;
+}
+
+/* ---- game over ---- */
+
+/* ---- game over ---- */
+
+.over {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+  padding-top: 12vh;
+}
+.over__title {
+  margin: 0;
+  font-size: 1.9rem;
+  letter-spacing: 0.1em;
+  color: var(--red);
+  text-shadow: 0 0 24px rgba(255, 92, 108, 0.4);
+}
+.over__stats {
+  display: flex;
+  gap: 22px;
+}
+.over__stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.over__stats b {
+  font-size: 1.9rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.over__stats span {
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+}
+.over .pre__go {
+  min-width: 200px;
 }

@@ -28,13 +28,23 @@ const io = new Server(http, {
 /** In-game state per room, created on `room:start`. */
 const games = new Map<string, Game>();
 
+function disposeGame(code: string): void {
+  games.get(code)?.stop();
+  games.delete(code);
+}
+
 const rooms = new RoomManager({
   onChange: (room) => {
     io.to(roomChannel(room)).emit(ServerEvent.RoomState, room.view());
     const game = games.get(room.code);
     if (game) broadcastGame(room, game);
   },
-  onDispose: (code) => games.delete(code),
+  onDispose: disposeGame,
+  onMemberDropped: (room, playerId) => {
+    const game = games.get(room.code);
+    if (game && !game.isOver) game.removePlayer(playerId);
+    if (game) broadcastGame(room, game);
+  },
 });
 
 function roomChannel(room: Room): string {
@@ -64,6 +74,11 @@ function joinedData(room: Room, member: Member): RoomJoinedData {
 
 /** Send each connected member their own filtered PlayerView. */
 function broadcastGame(room: Room, game: Game): void {
+  // The game ending flips the room to the "gameover" phase.
+  if (game.isOver && room.phase === "playing") {
+    room.phase = "gameover";
+    io.to(roomChannel(room)).emit(ServerEvent.RoomState, room.view());
+  }
   const view = room.view();
   for (const m of room.members) {
     if (m.socketId) {
@@ -153,10 +168,30 @@ io.on("connection", (socket) => {
       const token = (socket.data as SocketData).token;
       if (!token) throw new RoomError("expired", "Сессия истекла");
       const room = rooms.startGame(token); // flips phase, broadcasts room:state
+      disposeGame(room.code); // in case a previous game lingered
       const game = new Game(room.members.map((m) => m.id));
       games.set(room.code, game);
       console.log(`game ${room.code} seed=${game.seed}`);
+      game.start(() => broadcastGame(room, game));
       broadcastGame(room, game);
+      ack({ ok: true, data: null });
+    } catch (err) {
+      fail(ack, err);
+    }
+  });
+
+  socket.on(ClientEvent.Restart, (_req: unknown, ack: (r: Ack<null>) => void) => {
+    try {
+      const token = (socket.data as SocketData).token;
+      if (!token) throw new RoomError("expired", "Сессия истекла");
+      const room = rooms.getRoomByToken(token);
+      const member = room?.byToken(token);
+      if (!room || !member) throw new RoomError("expired", "Сессия истекла");
+      if (!member.isHost)
+        throw new RoomError("not_host", "Только капитан может перезапустить");
+      disposeGame(room.code);
+      room.phase = "lobby";
+      io.to(roomChannel(room)).emit(ServerEvent.RoomState, room.view());
       ack({ ok: true, data: null });
     } catch (err) {
       fail(ack, err);

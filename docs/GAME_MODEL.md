@@ -102,8 +102,9 @@ one panel — an instruction naming `ТУРБОЖАБА` must be globally unambi
 Repeated interaction *types* are expected and never constrained. Different
 matches may reuse names.
 
-Layout (position, size on screen) is **not** part of the model. The client
-renders instances as a vertical stack. (Contrast: OpenSpaceTeam bakes grid
+Layout (footprint, position, slider orientation) is **not** part of the model —
+the client decides it from the panel contents (`docs/PANEL_LAYOUT.md`). The
+server never models screen geometry. (Contrast: OpenSpaceTeam bakes grid
 geometry into generation.)
 
 ### 4. ControlComplexity — *a 1–10 score on the TYPE*
@@ -113,7 +114,7 @@ difficulty (§ "Complexity is not task difficulty").
 
 ### 5. Instruction — *a desired action referencing a control*
 
-**Implemented (Stage 3, `shared/game.ts`)** for button/toggle/shapeSelector:
+**Implemented (`shared/game.ts`)**, all six control types:
 
 ```ts
 interface Instruction {
@@ -123,7 +124,9 @@ interface Instruction {
   shownToPlayerId: string;    // who sees it — independent of the control's owner
   expected: ExpectedOutcome;
   text: string;               // Russian, contains controlLabel verbatim
-  status: "active" | "completed";
+  status: "active" | "completed" | "expired";
+  deadlineAt: number;         // server timestamp; on the wire it's remainingMs
+  totalMs: number;            // deadline window, for the countdown bar
 }
 
 type ExpectedOutcome =
@@ -209,13 +212,23 @@ interface RoomState {
   protocolVersion: number;
 }
 
-interface ShipState {                // Stage 5+
-  health: number;
-  progress: number;
-  timeRemaining: number;
-  difficultyLevel: number;
+// Implemented (Stage 5) — sent inside PlayerView, not RoomState:
+interface ShipView {
+  health: number; maxHealth: number;   // 0..100; game over at 0
+  progress: number;                    // instructions the crew has completed
+  level: number;                       // 1 + floor(elapsedMs / 20_000)
+  elapsedMs: number;
+  phase: "playing" | "gameover";
+  overReason?: "health" | "crew";
 }
 ```
+
+**The loop (`apps/server/src/game.ts`, `Game.step()` at 1 Hz):** expire overdue
+instructions → `health -= difficultyFor(level).expirePenalty`, issue a
+replacement; top each player to `difficultyFor(level).instructionsPerPlayer`;
+`health` heals a little on completion (capped 100); at `health <= 0` →
+`overReason: "health"`; below 2 players → `overReason: "crew"`. No passive drain.
+Difficulty ramps every 20 s (shorter deadlines, more concurrent instructions).
 
 ### Per-player view (what actually goes over the wire)
 
@@ -224,16 +237,21 @@ each socket gets only:
 
 ```ts
 interface PlayerView {
-  room: RoomView;              // public (code, phase, PublicPlayer[], protocolVersion)
-  you: string;                // this player's id
-  panel: ControlInstance[];   // only controls where ownerPlayerId === you
-  instructions: Instruction[]; // only shownToPlayerId === you, status active
-  // ship?: ShipState;         // public — Stage 5
+  room: RoomView;                 // public (code, phase, PublicPlayer[], protocolVersion)
+  you: string;                    // this player's id
+  panel: ControlInstance[];       // only controls where ownerPlayerId === you
+  instructions: InstructionView[]; // only shownToPlayerId === you, status active
+  ship: ShipView;                 // public
+}
+interface InstructionView {
+  id; controlId; controlLabel; text;
+  remainingMs; totalMs;           // relative time — no phone/Mac clock skew
 }
 ```
 
-A player never receives other players' control state or instruction objects.
-Sent on `game:view` after every game change and on resume.
+A player never receives other players' control state, instruction objects, or
+absolute server timestamps. Sent on `game:view` every tick, after every change,
+and on resume.
 
 ---
 
@@ -310,7 +328,7 @@ Completion is decided **only** here. Clients never report success.
 | 2 | `Player`, `RoomState.code`, persistent `playerId`, `connection` |
 | 3 | ✅ `Instruction` + `ExpectedOutcome`, `Intent`, `generatePanels` / `generateInstructions` / `nextInstruction`, pure `validateIntent`, `buildPlayerView` + `game:view` per-socket serialization. button/toggle/shapeSelector. Server-authoritative completion + replacement. No timers/health. |
 | 4 | ✅ `generatePanels` → 4–6 controls/player of all six `GAME_TYPES`, balanced by total complexity (not count); ~42 provisional names; `ExpectedOutcome`/`validateIntent`/`instructionText` for direction/slider/dial; `nextInstruction` avoids re-targeting the just-completed control; seed logged. |
-| 5 | `ShipState`, `deadlineAt`, `status: "expired"`, difficulty progression |
+| 5 | ✅ Server 1 Hz `Game.step()`; instruction `deadlineAt`/`totalMs` + `status:"expired"`; `ShipView` (health/progress/level/elapsed); `difficultyFor`/`levelForElapsed` ramp; game over at 0 health or < 2 players; `room:restart`; `InstructionView` relative-time wire format; mid-game `Game.removePlayer`. |
 | 6 | `hold` kind, `HOLD_STARTED/ENDED`, synchronized-hold condition |
 | 7 | `mash` kind, shared/independent tap counters |
 | 8 | critical events: compound conditions over multiple instructions |

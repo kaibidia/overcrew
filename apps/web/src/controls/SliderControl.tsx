@@ -15,6 +15,8 @@ interface Props {
   /** Storage granularity — 1 for the integer 0–100 slider. */
   step: number;
   value: number;
+  /** Layout representation choice — same mechanic, same behaviour. */
+  orientation?: "horizontal" | "vertical";
   /** Optional demo task: on release, show whether the value landed in tolerance. */
   task?: SliderTask;
   onEvent: (e: ControlEvent) => void;
@@ -26,20 +28,27 @@ const clampRound = (raw: number, min: number, max: number, step: number) => {
 };
 
 /**
- * Continuously-draggable slider. The thumb follows the finger/pointer; the value
- * is always an integer (step). One `slider` event is emitted per settle (pointer
- * up, or each key press) — not on every drag frame — so the log stays readable.
+ * Continuously-draggable slider, horizontal or vertical (a layout choice — the
+ * 0–100 / step-1 behaviour and target/tolerance validation are identical). The
+ * thumb follows the pointer; one `slider` event is emitted per settle.
  *
- * The accepted tolerance band is deliberately NOT drawn on the track: the player
- * reaches the target using the prominent numeric readout, not a visible zone.
+ * The accepted tolerance band is deliberately NOT drawn on the track.
  */
-export function SliderControl({ min, max, step, value, task, onEvent }: Props) {
+export function SliderControl({
+  min,
+  max,
+  step,
+  value,
+  orientation = "horizontal",
+  task,
+  onEvent,
+}: Props) {
+  const vertical = orientation === "vertical";
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragValue, setDragValue] = useState(value);
   const [dragging, setDragging] = useState(false);
   const [outcome, setOutcome] = useState<"hit" | "miss" | null>(null);
 
-  // Keep the shown value in sync when not actively dragging (e.g. reset).
   useEffect(() => {
     if (!dragging) setDragValue(value);
   }, [value, dragging]);
@@ -47,12 +56,14 @@ export function SliderControl({ min, max, step, value, task, onEvent }: Props) {
   const shown = dragging ? dragValue : value;
   const frac = (shown - min) / (max - min);
 
-  const valueAt = (clientX: number) => {
+  const valueAt = (clientX: number, clientY: number) => {
     const el = trackRef.current;
     if (!el) return value;
     const r = el.getBoundingClientRect();
-    const frac = (clientX - r.left) / r.width;
-    return clampRound(min + frac * (max - min), min, max, step);
+    const f = vertical
+      ? (r.bottom - clientY) / r.height
+      : (clientX - r.left) / r.width;
+    return clampRound(min + f * (max - min), min, max, step);
   };
 
   const settle = (next: number) => {
@@ -66,13 +77,13 @@ export function SliderControl({ min, max, step, value, task, onEvent }: Props) {
     trackRef.current?.setPointerCapture(e.pointerId);
     setOutcome(null);
     setDragging(true);
-    setDragValue(valueAt(e.clientX));
+    setDragValue(valueAt(e.clientX, e.clientY));
   };
 
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!dragging) return;
     e.preventDefault();
-    setDragValue(valueAt(e.clientX));
+    setDragValue(valueAt(e.clientX, e.clientY));
   };
 
   const endDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -98,7 +109,9 @@ export function SliderControl({ min, max, step, value, task, onEvent }: Props) {
   };
 
   return (
-    <div className={`slider slider--${outcome ?? "idle"}`}>
+    <div
+      className={`slider slider--${vertical ? "v" : "h"} slider--${outcome ?? "idle"}`}
+    >
       <div className="slider__head">
         <span className="slider__value">{shown}</span>
         {task && (
@@ -115,6 +128,7 @@ export function SliderControl({ min, max, step, value, task, onEvent }: Props) {
         role="slider"
         tabIndex={0}
         aria-label="ползунок"
+        aria-orientation={vertical ? "vertical" : "horizontal"}
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={shown}

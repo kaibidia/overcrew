@@ -84,6 +84,8 @@ export interface RoomManagerOptions {
   onChange: (room: Room) => void;
   /** Called with the code of a room that was just disposed (now empty). */
   onDispose?: (code: string) => void;
+  /** Called when a member is removed from a still-alive room (left / grace expired). */
+  onMemberDropped?: (room: Room, playerId: string) => void;
 }
 
 export class RoomManager {
@@ -93,12 +95,14 @@ export class RoomManager {
   private readonly graceMs: number;
   private readonly onChange: (room: Room) => void;
   private readonly onDispose: (code: string) => void;
+  private readonly onMemberDropped: (room: Room, playerId: string) => void;
 
   constructor(opts: RoomManagerOptions) {
     this.now = opts.now ?? Date.now;
     this.graceMs = opts.graceMs ?? GRACE_MS;
     this.onChange = opts.onChange;
     this.onDispose = opts.onDispose ?? (() => undefined);
+    this.onMemberDropped = opts.onMemberDropped ?? (() => undefined);
   }
 
   get roomCount(): number {
@@ -228,6 +232,7 @@ export class RoomManager {
       return;
     }
     if (member.isHost) room.ensureHost();
+    this.onMemberDropped(room, member.id);
     this.onChange(room);
   }
 

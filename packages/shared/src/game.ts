@@ -11,6 +11,11 @@
  * dial). Panels are 4–6 controls, randomised, balanced by total
  * `getPanelComplexity` rather than by count. `hold`/`mash` are Stages 6/7.
  *
+ * Stage 5: instructions have deadlines; missing one drains ship health;
+ * difficulty ramps with elapsed time (shorter deadlines, more concurrent
+ * instructions); at 0 health it's game over. The 1 Hz loop lives on the server
+ * (`apps/server/src/game.ts`).
+ *
  * All completion is decided by the server via `validateIntent` — pure, no
  * mutation. Clients only send intent.
  */
@@ -53,6 +58,50 @@ export const MAX_PANEL_CONTROLS = 6;
 /** Greedy fill stops here (once ≥ MIN_PANEL_CONTROLS) — see generatePanels. */
 export const TARGET_PANEL_COMPLEXITY = 15;
 
+// --- Difficulty / ship (Stage 5) ---------------------------------------
+
+export const MAX_HEALTH = 100;
+export const LEVEL_INTERVAL_MS = 20_000;
+
+export interface Difficulty {
+  /** Time a fresh instruction is given, ms. */
+  deadlineMs: number;
+  /** How many instructions each player holds at once. */
+  instructionsPerPlayer: number;
+  /** Health lost when an instruction expires. */
+  expirePenalty: number;
+  /** Health regained when an instruction completes (capped at MAX_HEALTH). */
+  completeHeal: number;
+}
+
+/** Level 1 at the start, +1 every LEVEL_INTERVAL_MS of play. */
+export function levelForElapsed(elapsedMs: number): number {
+  return 1 + Math.max(0, Math.floor(elapsedMs / LEVEL_INTERVAL_MS));
+}
+
+export function difficultyFor(level: number): Difficulty {
+  return {
+    deadlineMs: Math.max(6_000, 22_000 - (level - 1) * 2_000),
+    instructionsPerPlayer: level >= 6 ? 3 : level >= 3 ? 2 : 1,
+    expirePenalty: 6 + level,
+    completeHeal: 4,
+  };
+}
+
+export type GamePhase = "playing" | "gameover";
+export type GameOverReason = "health" | "crew";
+
+export interface ShipView {
+  health: number;
+  maxHealth: number;
+  /** Instructions completed by the whole crew. */
+  progress: number;
+  level: number;
+  elapsedMs: number;
+  phase: GamePhase;
+  overReason?: GameOverReason;
+}
+
 // --- Instructions ---------------------------------------------------------
 
 export type ExpectedOutcome =
@@ -71,7 +120,11 @@ export interface Instruction {
   shownToPlayerId: string;
   expected: ExpectedOutcome;
   text: string;
-  status: "active" | "completed";
+  status: "active" | "completed" | "expired";
+  /** Absolute server timestamp (ms) after which the instruction expires. */
+  deadlineAt: number;
+  /** The full deadline window in ms — for drawing the countdown bar. */
+  totalMs: number;
 }
 
 export interface GameLike {
@@ -79,12 +132,23 @@ export interface GameLike {
   instructions: Instruction[];
 }
 
-/** What a single player is sent — only their own panel and their own instructions. */
+/** One instruction as sent to the client — no absolute server timestamp. */
+export interface InstructionView {
+  id: string;
+  controlId: string;
+  controlLabel: string;
+  text: string;
+  remainingMs: number;
+  totalMs: number;
+}
+
+/** What a single player is sent — only their own panel, instructions, ship. */
 export interface PlayerView {
   room: RoomView;
   you: string;
   panel: ControlInstance[];
-  instructions: Instruction[];
+  instructions: InstructionView[];
+  ship: ShipView;
 }
 
 // --- Intents -------------------------------------------------------------
@@ -278,14 +342,24 @@ function newId(): string {
  * Controls already targeted by an active instruction — and the one just
  * completed (`avoidControlId`) — are skipped.
  */
+export interface NextInstructionOpts {
+  /** Absolute timestamp the instruction should expire at. */
+  deadlineAt: number;
+  /** The deadline window in ms (for the countdown bar). */
+  totalMs: number;
+  /** Don't re-target this control (e.g. the one just completed/expired). */
+  avoidControlId?: string;
+}
+
 export function nextInstruction(
   recipientId: string,
   playerIds: readonly string[],
   controls: readonly ControlInstance[],
   activeInstructions: readonly Instruction[],
   rng: Rng,
-  avoidControlId?: string,
+  opts: NextInstructionOpts,
 ): Instruction {
+  const { deadlineAt, totalMs, avoidControlId } = opts;
   const blocked = new Set(activeInstructions.map((i) => i.controlId));
   if (avoidControlId) blocked.add(avoidControlId);
 
@@ -329,18 +403,26 @@ export function nextInstruction(
     expected,
     text: instructionText(target.label, expected),
     status: "active",
+    deadlineAt,
+    totalMs,
   };
 }
 
-/** One active instruction per player at game start. */
+/** One active instruction per player, all with the same deadline window. */
 export function generateInstructions(
   playerIds: readonly string[],
   controls: readonly ControlInstance[],
   rng: Rng,
+  opts: { now: number; deadlineMs: number },
 ): Instruction[] {
   const out: Instruction[] = [];
   for (const pid of playerIds) {
-    out.push(nextInstruction(pid, playerIds, controls, out, rng));
+    out.push(
+      nextInstruction(pid, playerIds, controls, out, rng, {
+        deadlineAt: opts.now + opts.deadlineMs,
+        totalMs: opts.deadlineMs,
+      }),
+    );
   }
   return out;
 }
@@ -450,13 +532,22 @@ export function buildPlayerView(
   room: RoomView,
   playerId: string,
   game: GameLike,
+  opts: { ship: ShipView; now: number },
 ): PlayerView {
   return {
     room,
     you: playerId,
+    ship: opts.ship,
     panel: game.controls.filter((c) => c.ownerPlayerId === playerId),
-    instructions: game.instructions.filter(
-      (i) => i.shownToPlayerId === playerId && i.status === "active",
-    ),
+    instructions: game.instructions
+      .filter((i) => i.shownToPlayerId === playerId && i.status === "active")
+      .map((i) => ({
+        id: i.id,
+        controlId: i.controlId,
+        controlLabel: i.controlLabel,
+        text: i.text,
+        remainingMs: Math.max(0, i.deadlineAt - opts.now),
+        totalMs: i.totalMs,
+      })),
   };
 }
