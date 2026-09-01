@@ -217,7 +217,16 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     const token = (socket.data as SocketData).token;
-    if (token) rooms.markDisconnected(token, socket.id);
+    if (!token) return;
+    // A dropped phone can't keep holding a control.
+    const room = rooms.getRoomByToken(token);
+    const member = room?.byToken(token);
+    const game = room ? games.get(room.code) : undefined;
+    if (game && member) {
+      game.releaseHolds(member.id);
+      broadcastGame(room!, game);
+    }
+    rooms.markDisconnected(token, socket.id);
   });
 });
 

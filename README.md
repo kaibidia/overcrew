@@ -7,13 +7,21 @@ See [`OVERCREW_CLAUDE_CODE_PROMPT.md`](OVERCREW_CLAUDE_CODE_PROMPT.md) for the b
 
 ## Status
 
-**Stage 5 — timed game loop.** Instructions now have deadlines; missing one
-drains ship health, completing one heals a little. A server-side 1 Hz loop ramps
-difficulty every 20 s (shorter deadlines, more concurrent instructions per
-player). HUD shows health / level / timer / progress; each instruction has a
-countdown bar. Game over at 0 health (or < 2 players); the captain restarts.
-Mid-game disconnects are handled. A full game runs from lobby to game over in
-~2–3 minutes.
+**Stage 6 — hold mechanics.** Some instructions now require *holding* a control
+(`СТАБИЛИЗАТОР → УДЕРЖАТЬ 3с`) — the server tracks hold time and completes it
+when the control has been held continuously for the required duration. A
+*synchronized hold* (`ГАСИТЕЛЬ ТЯГИ + КРИОЗАХВАТ → УДЕРЖАТЬ ВМЕСТЕ 4с`) names two
+controls, usually on two different phones; progress only accrues while **both**
+are held and resets to zero the instant either is released. Hold instructions
+show a green progress bar instead of the red countdown and get a generous
+deadline — the coordination is the challenge. Every ≥ 2-player game is guaranteed
+at least two hold controls on two different players.
+
+Earlier: **Stage 5** — instructions have deadlines; missing one drains ship
+health, completing one heals. A server-side 1 Hz loop ramps difficulty every
+20 s. HUD shows health / level / timer / progress. Game over at 0 health (or
+< 2 players); the captain restarts. Mid-game disconnects are handled. A full game
+runs from lobby to game over in ~2–3 minutes.
 
 The Stage 1 control playground (full V1 control alphabet) is still reachable at
 `/#playground`.

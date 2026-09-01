@@ -24,8 +24,19 @@ function intentFor(g: Game, instructionId: string): { ownerId: string; intent: I
     case "select": intent = { type: "set", controlId: c.id, value: e.value }; break;
     case "slider": intent = { type: "set", controlId: c.id, value: e.task.targetValue }; break;
     case "dial": intent = { type: "set", controlId: c.id, value: e.position }; break;
+    case "hold":
+    case "syncHold": intent = { type: "hold-start", controlId: c.id }; break;
   }
   return { ownerId: c.ownerPlayerId!, intent };
+}
+
+/** Pick an instruction whose expectation is value-based (completable via one intent). */
+function valueBasedInstruction(g: Game): string {
+  const ins = g.instructions.find(
+    (i) => i.expected.kind !== "hold" && i.expected.kind !== "syncHold",
+  );
+  if (!ins) throw new Error("no value-based instruction");
+  return ins.id;
 }
 
 describe("Game — setup", () => {
@@ -53,7 +64,8 @@ describe("Game — completing instructions", () => {
     const hurt = g.ship().health;
     expect(hurt).toBeLessThan(100);
 
-    const first = g.instructions[0]!;
+    const firstId = valueBasedInstruction(g);
+    const first = g.instructions.find((i) => i.id === firstId)!;
     const { ownerId, intent } = intentFor(g, first.id);
     const res = g.applyIntent(ownerId, intent);
     expect(res.completed).toBe(true);
@@ -76,11 +88,107 @@ describe("Game — completing instructions", () => {
   });
 });
 
+describe("Game — holds (Stage 6)", () => {
+  /** Force the first instruction to be a solo hold on a real hold control. */
+  function forceHold(g: Game, forMs = 3000) {
+    const c = g.controls.find((x) => x.definition.kind === "hold")!;
+    const ins = g.instructions[0]!;
+    ins.expected = { kind: "hold", forMs };
+    ins.controlId = c.id;
+    ins.controlLabel = c.label;
+    ins.deadlineAt = 9_999_999_999;
+    return { ins, c };
+  }
+
+  function forceSyncHold(g: Game, forMs = 3000) {
+    const [a, b] = g.controls.filter((x) => x.definition.kind === "hold");
+    const ins = g.instructions[0]!;
+    ins.expected = {
+      kind: "syncHold",
+      forMs,
+      withControlId: b!.id,
+      withControlLabel: b!.label,
+    };
+    ins.controlId = a!.id;
+    ins.controlLabel = a!.label;
+    ins.deadlineAt = 9_999_999_999;
+    return { ins, a: a!, b: b! };
+  }
+
+  it("solo hold completes only after being held continuously for forMs", () => {
+    const { g, advance } = makeGame(PLAYERS, "hold");
+    const { ins, c } = forceHold(g, 3000);
+    const owner = c.ownerPlayerId!;
+
+    g.applyIntent(owner, { type: "hold-start", controlId: c.id });
+    advance(2000);
+    g.step();
+    expect(g.instructions.some((i) => i.id === ins.id)).toBe(true); // not yet
+    advance(1500);
+    g.step();
+    expect(g.instructions.some((i) => i.id === ins.id)).toBe(false); // done
+    expect(g.ship().progress).toBe(1);
+  });
+
+  it("releasing the hold resets progress", () => {
+    const { g, advance } = makeGame(PLAYERS, "hold2");
+    const { ins, c } = forceHold(g, 3000);
+    const owner = c.ownerPlayerId!;
+
+    g.applyIntent(owner, { type: "hold-start", controlId: c.id });
+    advance(2500);
+    g.applyIntent(owner, { type: "hold-end", controlId: c.id });
+    advance(2000);
+    g.applyIntent(owner, { type: "hold-start", controlId: c.id }); // grab again
+    advance(2500);
+    g.step();
+    expect(g.instructions.some((i) => i.id === ins.id)).toBe(true); // only 2.5s so far
+    advance(1000);
+    g.step();
+    expect(g.instructions.some((i) => i.id === ins.id)).toBe(false);
+  });
+
+  it("sync hold needs both controls; releasing either resets", () => {
+    const { g, advance } = makeGame(PLAYERS, "sync");
+    const { ins, a, b } = forceSyncHold(g, 3000);
+
+    g.applyIntent(a.ownerPlayerId!, { type: "hold-start", controlId: a.id });
+    advance(4000);
+    g.step();
+    expect(g.instructions.some((i) => i.id === ins.id)).toBe(true); // only one held
+
+    g.applyIntent(b.ownerPlayerId!, { type: "hold-start", controlId: b.id });
+    advance(2000);
+    g.applyIntent(a.ownerPlayerId!, { type: "hold-end", controlId: a.id }); // one lets go
+    advance(2000);
+    g.step();
+    expect(g.instructions.some((i) => i.id === ins.id)).toBe(true); // reset
+
+    g.applyIntent(a.ownerPlayerId!, { type: "hold-start", controlId: a.id });
+    advance(3500);
+    g.step();
+    expect(g.instructions.some((i) => i.id === ins.id)).toBe(false); // both held long enough
+    expect(g.ship().progress).toBe(1);
+  });
+
+  it("releaseHolds breaks a sync hold in progress", () => {
+    const { g, advance } = makeGame(PLAYERS, "sync2");
+    const { ins, a, b } = forceSyncHold(g, 3000);
+    g.applyIntent(a.ownerPlayerId!, { type: "hold-start", controlId: a.id });
+    g.applyIntent(b.ownerPlayerId!, { type: "hold-start", controlId: b.id });
+    advance(1500);
+    g.releaseHolds(a.ownerPlayerId!); // A's phone drops
+    advance(3000);
+    g.step();
+    expect(g.instructions.some((i) => i.id === ins.id)).toBe(true);
+  });
+});
+
 describe("Game — the 1 Hz loop", () => {
   it("expires overdue instructions, drains health, issues fresh ones", () => {
     const { g, advance } = makeGame(PLAYERS, "expire");
     const ids0 = g.instructions.map((i) => i.id);
-    advance(30_000); // well past the level-1 deadline
+    advance(38_000); // past every deadline (incl. extended hold ones), still level 2
     g.step();
     expect(g.ship().health).toBeLessThan(100);
     // still one active instruction per player, all new

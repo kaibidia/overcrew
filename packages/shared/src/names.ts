@@ -89,8 +89,14 @@ export const OTHER_NAMES = [
   { id: "kalibrator", label: "КАЛИБРАТОР", compatibleTypes: ["dial"] },
   { id: "goniometr", label: "ГОНИОМЕТР", compatibleTypes: ["dial"] },
   { id: "rezonator", label: "РЕЗОНАТОР", compatibleTypes: ["dial"] },
-  // hold / mash — one example each, pending their own stages
+  // hold (Stage 6) — provisional pool
   { id: "stabilizator", label: "СТАБИЛИЗАТОР", compatibleTypes: ["hold"] },
+  { id: "kriozahvat", label: "КРИОЗАХВАТ", compatibleTypes: ["hold"] },
+  { id: "upor_reaktora", label: "УПОР РЕАКТОРА", compatibleTypes: ["hold"] },
+  { id: "gasitel_tyagi", label: "ГАСИТЕЛЬ ТЯГИ", compatibleTypes: ["hold"] },
+  { id: "fiksator_osi", label: "ФИКСАТОР ОСИ", compatibleTypes: ["hold"] },
+  { id: "dempfer", label: "ДЕМПФЕР", compatibleTypes: ["hold"] },
+  // mash — one example, Stage 7
   { id: "impulsator", label: "ИМПУЛЬСАТОР", compatibleTypes: ["mash"] },
 ] as const satisfies readonly ControlNameDef[];
 

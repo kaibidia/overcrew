@@ -5,3 +5,9 @@ dist/
 .vite/
 coverage/
 *.log
+
+# local design brief — not part of the codebase
+docs/DESIGN_BRIEF_ENTRY_SCREENS.md
+
+# session scratch space
+scratchpad/

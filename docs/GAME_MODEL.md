@@ -37,7 +37,7 @@ type ControlType =
   | "shapeSelector" // discrete set shown at once, e.g. shapes ● ▲ ■ ◆
   | "slider"        // discrete steps over a range (0–100, stepped)
   | "dial"          // directly-dragged rotary with discrete positions
-  | "hold"          // press and keep holding (local only until Stage 6)
+  | "hold"          // press and keep holding for a duration (Stage 6)
   | "mash";         // N repeated taps        (local only until Stage 7)
 
 // ControlDefinition is a discriminated union on `kind` (= the ControlType),
@@ -135,22 +135,38 @@ type ExpectedOutcome =
   | { kind: "direction"; value: Direction }
   | { kind: "select"; value: string | number }      // shapeSelector
   | { kind: "slider"; task: SliderTask }             // targetValue ± tolerance
-  | { kind: "dial"; position: number };              // 0-indexed; shown +1
-// later: hold(ms), taps(n); + deadlineAt (Stage 5)
+  | { kind: "dial"; position: number }               // 0-indexed; shown +1
+  | { kind: "hold"; forMs: number }                  // hold one control forMs continuously
+  | { kind: "syncHold"; forMs: number;               // hold two controls at once forMs
+      withControlId: string; withControlLabel: string };
+// later: taps(n)
 ```
 
 Text: `ТУРБОЖАБА → ◆`, `НЕЙТРОННЫЙ КРАН → ВКЛ`, `ПЛАЗМОНАСОС → НАЖАТЬ`,
-`ГИРОСКОП → ВЛЕВО`, `ДАВЛЕНИЕ → 67 ± 3`, `ФАЗОВРАЩАТЕЛЬ → 6`. Never produce
-ownership-implying text ("твоя задача", "свой"). A slider instruction's tolerance
-band is never drawn on the acting player's slider (D29).
+`ГИРОСКОП → ВЛЕВО`, `ДАВЛЕНИЕ → 67 ± 3`, `ФАЗОВРАЩАТЕЛЬ → 6`,
+`СТАБИЛИЗАТОР → УДЕРЖАТЬ 3с`, `ГАСИТЕЛЬ ТЯГИ + КРИОЗАХВАТ → УДЕРЖАТЬ ВМЕСТЕ 4с`.
+Never produce ownership-implying text ("твоя задача", "свой"). A slider
+instruction's tolerance band is never drawn on the acting player's slider (D29).
 
 **Intent + validation.** Client sends `Intent`
-(`{ type:"press", controlId } | { type:"set", controlId, value }`) via
+(`{ type:"press", controlId } | { type:"set", controlId, value }
+| { type:"hold-start", controlId } | { type:"hold-end", controlId }`) via
 `game:intent`. The server calls the pure `validateIntent(game, playerId, intent)`
 → `{ ok, nextState?, completedInstructionId? }` (`ok:false` only for unknown
 control / non-owner). It applies `nextState`, and on completion retires the
 instruction and issues a replacement for the same recipient. A non-matching
 action is a valid no-op.
+
+**Holds** (Stage 6). `hold-start` / `hold-end` set the control's `ControlState`
+(`{ kind:"hold", held:boolean }`) and update `Game.held: Map<controlId,
+heldSinceMs>`. `expectationMet` is always `false` for `hold` / `syncHold` — the
+server decides completion by elapsed time: `holdComplete(instr, held, now)` is
+true once the required control(s) have been held continuously for `forMs`. A
+`syncHold` accrues progress only while **both** controls are held and resets the
+instant either is released. Completion is checked on every hold intent, on a
+one-shot timer scheduled for the soonest completion, and each 1 Hz step.
+Disconnect / grace-drop releases that player's holds. Hold instructions get
+`forMs + 5000` extra deadline.
 
 **Targeting rules** (`nextInstruction`): target owner independent of recipient,
 self only ~`SELF_TARGET_CHANCE` (0.2); prefer the owner with the fewest active
@@ -246,6 +262,7 @@ interface PlayerView {
 interface InstructionView {
   id; controlId; controlLabel; text;
   remainingMs; totalMs;           // relative time — no phone/Mac clock skew
+  hold?: { heldMs: number; forMs: number };  // Stage 6: present for hold/syncHold
 }
 ```
 
@@ -318,6 +335,12 @@ hard) — is separate and must never be folded into the base complexity score.
 
 Completion is decided **only** here. Clients never report success.
 
+**Holds** are the exception to step 4's "new state satisfies `expected`": `hold` /
+`syncHold` are time-based, so `expectationMet` is always `false` for them and the
+`Game` completes them from a separate `checkHoldCompletions()` driven by
+`holdComplete(instr, Game.held, now)` — on every hold intent, a one-shot timer,
+and each 1 Hz step. Still server-only; clients still never report success.
+
 ---
 
 ## Stage map for this model
@@ -329,6 +352,6 @@ Completion is decided **only** here. Clients never report success.
 | 3 | ✅ `Instruction` + `ExpectedOutcome`, `Intent`, `generatePanels` / `generateInstructions` / `nextInstruction`, pure `validateIntent`, `buildPlayerView` + `game:view` per-socket serialization. button/toggle/shapeSelector. Server-authoritative completion + replacement. No timers/health. |
 | 4 | ✅ `generatePanels` → 4–6 controls/player of all six `GAME_TYPES`, balanced by total complexity (not count); ~42 provisional names; `ExpectedOutcome`/`validateIntent`/`instructionText` for direction/slider/dial; `nextInstruction` avoids re-targeting the just-completed control; seed logged. |
 | 5 | ✅ Server 1 Hz `Game.step()`; instruction `deadlineAt`/`totalMs` + `status:"expired"`; `ShipView` (health/progress/level/elapsed); `difficultyFor`/`levelForElapsed` ramp; game over at 0 health or < 2 players; `room:restart`; `InstructionView` relative-time wire format; mid-game `Game.removePlayer`. |
-| 6 | `hold` kind, `HOLD_STARTED/ENDED`, synchronized-hold condition |
+| 6 | ✅ `hold` kind live: `hold-start`/`hold-end` intents, `Game.held` map, `holdComplete`/`holdProgressMs` (pure), one-shot completion timer + step backstop. `ExpectedOutcome` `hold` + `syncHold` (two controls, both-held-or-reset); `generatePanels` guarantees ≥ 2 hold controls on ≥ 2 owners; `nextInstruction` emits syncHold at `SYNC_HOLD_CHANCE`. `ControlState.hold` = `{ held }`; green progress bar; `forMs + 5000` deadline; `releaseHolds` on disconnect. |
 | 7 | `mash` kind, shared/independent tap counters |
 | 8 | critical events: compound conditions over multiple instructions |

@@ -19,6 +19,12 @@ function toIntent(controlId: string, e: ControlEvent): Intent | null {
       return { type: "set", controlId, value: e.value };
     case "dial":
       return { type: "set", controlId, value: e.position };
+    case "hold":
+      return e.phase === "start"
+        ? { type: "hold-start", controlId }
+        : e.phase === "end"
+          ? { type: "hold-end", controlId }
+          : null;
     default:
       return null;
   }

@@ -12,6 +12,8 @@ import type { ControlEvent } from "./types";
 interface Props {
   instance: ControlInstance;
   onEvent: (e: ControlEvent) => void;
+  /** Local demo mode — the Stage 1 playground. */
+  playground?: boolean;
   /** Playground-only demo task for a slider. */
   sliderTask?: SliderTask;
   /** Layout choice for a slider (gameplay panel). */
@@ -22,9 +24,11 @@ interface Props {
 export function ControlWidget({
   instance,
   onEvent,
+  playground,
   sliderTask,
   sliderOrientation,
 }: Props) {
+  const playgroundHold = playground === true;
   const def = instance.definition;
   const state = instance.state;
 
@@ -71,8 +75,8 @@ export function ControlWidget({
   if (def.kind === "hold" && state.kind === "hold")
     return (
       <HoldControl
-        durationMs={def.durationMs}
-        completed={state.completed}
+        held={state.held}
+        {...(playgroundHold ? { demoMs: def.durationMs } : {})}
         onEvent={onEvent}
       />
     );

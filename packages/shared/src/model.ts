@@ -125,7 +125,7 @@ export type ControlState =
   | { kind: "direction"; value: Direction | null }
   | { kind: "dial"; position: number }
   | { kind: "slider"; value: number }
-  | { kind: "hold"; completed: boolean }
+  | { kind: "hold"; held: boolean }
   | { kind: "mash"; taps: number };
 
 /** The starting state for a freshly created control. */
@@ -144,7 +144,7 @@ export function initialState(def: ControlDefinition): ControlState {
     case "slider":
       return { kind: "slider", value: def.min };
     case "hold":
-      return { kind: "hold", completed: false };
+      return { kind: "hold", held: false };
     case "mash":
       return { kind: "mash", taps: 0 };
   }

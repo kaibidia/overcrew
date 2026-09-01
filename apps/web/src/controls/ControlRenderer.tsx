@@ -29,7 +29,7 @@ export function readout(instance: ControlInstance): string {
     case "slider":
       return "";
     case "hold":
-      return s.completed ? "ГОТОВО" : "—";
+      return s.held ? "ДЕРЖИМ" : "—";
     case "mash":
       return `${s.taps} / ${def.kind === "mash" ? def.targetTaps : "?"}`;
   }
@@ -41,6 +41,7 @@ export function ControlRenderer({ instance, active, sliderTask, onEvent }: Props
     <ControlCard name={instance.label} readout={readout(instance)} active={active}>
       <ControlWidget
         instance={instance}
+        playground
         sliderTask={sliderTask}
         onEvent={onEvent}
       />

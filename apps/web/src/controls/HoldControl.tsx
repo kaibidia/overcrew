@@ -3,23 +3,25 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import type { ControlEvent } from "./types";
 
 interface Props {
-  durationMs: number;
-  completed: boolean;
+  /** Playground demo: fill a local progress bar over this long while pressed. */
+  demoMs?: number;
+  /** Gameplay: whether the server currently registers this control as held. */
+  held?: boolean;
   onEvent: (e: ControlEvent) => void;
 }
 
 /**
- * Local hold control. Pointer down starts holding; progress fills over
- * `durationMs`; reaching the end fires a one-off `complete`. Any pointer
- * up / cancel / capture loss safely stops the hold. No multiplayer here.
+ * Press-and-hold control. Pointer down → emit `hold` start; pointer up / cancel
+ * / capture loss → emit `hold` end. It shows a "holding" state immediately
+ * (optimistic), confirmed by the server via `held` in gameplay. In the
+ * playground (`demoMs`) it fills a local progress bar for the demo; in the game
+ * the completion progress lives on the instruction, not the control.
  */
-export function HoldControl({ durationMs, completed, onEvent }: Props) {
-  const [progress, setProgress] = useState(completed ? 1 : 0);
-  const [holding, setHolding] = useState(false);
-  const holdingRef = useRef(false);
+export function HoldControl({ demoMs, held, onEvent }: Props) {
+  const [pressed, setPressed] = useState(false);
+  const pressedRef = useRef(false);
+  const [demoPct, setDemoPct] = useState(0);
   const rafRef = useRef<number | null>(null);
-  const completedRef = useRef(completed);
-  completedRef.current = completed;
 
   const clearRaf = () => {
     if (rafRef.current !== null) {
@@ -27,62 +29,63 @@ export function HoldControl({ durationMs, completed, onEvent }: Props) {
       rafRef.current = null;
     }
   };
-
   useEffect(() => clearRaf, []);
 
-  const tick = (startTs: number) => {
-    const p = Math.min(1, (performance.now() - startTs) / durationMs);
-    setProgress(p);
-    if (p >= 1) {
-      rafRef.current = null;
-      if (!completedRef.current) onEvent({ type: "hold", phase: "complete" });
-      return;
-    }
-    rafRef.current = requestAnimationFrame(() => tick(startTs));
-  };
+  const holding = pressed || held === true;
 
   const begin = (e: ReactPointerEvent<HTMLButtonElement>) => {
-    if (holdingRef.current) return;
+    if (pressedRef.current) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    holdingRef.current = true;
-    setHolding(true);
+    pressedRef.current = true;
+    setPressed(true);
     onEvent({ type: "hold", phase: "start" });
-    const startTs = performance.now();
-    rafRef.current = requestAnimationFrame(() => tick(startTs));
+    if (demoMs) {
+      const t0 = performance.now();
+      const tick = () => {
+        const p = Math.min(1, (performance.now() - t0) / demoMs);
+        setDemoPct(p);
+        if (p < 1) rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    }
   };
 
   const end = (e: ReactPointerEvent<HTMLButtonElement>) => {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    if (!holdingRef.current) return;
-    holdingRef.current = false;
-    setHolding(false);
+    if (!pressedRef.current) return;
+    pressedRef.current = false;
+    setPressed(false);
     clearRaf();
+    setDemoPct(0);
     onEvent({ type: "hold", phase: "end" });
-    if (!completedRef.current) setProgress(0);
   };
 
-  const pct = Math.round(progress * 100);
+  const fillPct = demoMs ? Math.round(demoPct * 100) : holding ? 100 : 0;
 
   return (
     <button
       type="button"
-      className={`hold${completed ? " hold--done" : ""}${
-        holding ? " hold--active" : ""
-      }`}
+      className={`hold${holding ? " hold--active" : ""}`}
+      aria-pressed={holding}
       style={{ touchAction: "none" }}
       onPointerDown={begin}
       onPointerUp={end}
       onPointerCancel={end}
       onLostPointerCapture={end}
     >
-      <span className="hold__fill" style={{ height: `${pct}%` }} />
+      <span
+        className={`hold__fill${holding && !demoMs ? " hold__fill--pulse" : ""}`}
+        style={{ height: `${fillPct}%` }}
+      />
       <span className="hold__label">
-        {completed ? "УДЕРЖАНО" : "УДЕРЖИВАТЬ"}
+        {holding ? "ДЕРЖИМ" : "УДЕРЖИВАТЬ"}
       </span>
-      <span className="hold__pct">{pct}%</span>
+      {demoMs ? (
+        <span className="hold__pct">{fillPct}%</span>
+      ) : null}
     </button>
   );
 }

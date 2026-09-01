@@ -50,16 +50,10 @@ export function applyEvent(instance: ControlInstance, e: ControlEvent): Applied 
     case "hold": {
       if (s.kind !== "hold") break;
       if (e.phase === "start")
-        return { state: s, logLine: `${label} — удержание…` };
+        return { state: { kind: "hold", held: true }, logLine: `${label} — держим` };
       if (e.phase === "end")
-        return {
-          state: s,
-          logLine: s.completed ? `${label} — отпущено` : `${label} — прервано`,
-        };
-      return {
-        state: { kind: "hold", completed: true },
-        logLine: `${label} → УДЕРЖАНО`,
-      };
+        return { state: { kind: "hold", held: false }, logLine: `${label} — отпущено` };
+      return { state: s, logLine: `${label} → УДЕРЖАНО` };
     }
     case "mash": {
       if (s.kind !== "mash") break;

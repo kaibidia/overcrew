@@ -480,3 +480,41 @@ instruction stream (task language), not on the control. Mash keeps its `N / 12`
 counter + progress and its rectangular shape so Button ≠ Mash is obvious. The
 `pressCount` prop is gone from `ButtonControl` (the server still tracks it for
 validation).
+
+---
+
+## 2026-09-01 — Stage 6: hold mechanics
+
+### D62. `hold` is a game type; server owns hold state
+`GAME_TYPES` now includes `hold`. `ControlState.hold` changed from
+`{ completed }` to `{ held }` (reflected per-player from the server). New intents
+`hold-start` / `hold-end`; the client `HoldControl` emits them on pointer
+down/up (optimistic pressed state, confirmed by `held`). Completion is purely
+time-based — decided by `Game`, never by the client or a state snapshot
+(`expectationMet` returns `false` for hold/syncHold).
+
+### D63. `Game.held` map + one-shot timer
+`Game` keeps `held: Map<controlId, heldSinceMs>`. Solo hold completes when the
+control has been held for `expected.forMs` continuously; `holdComplete` /
+`holdProgressMs` (shared, pure) compute it. Checked on every hold intent, on a
+`setTimeout` scheduled for the soonest completion (so latency is ~0, no fast
+tick), and each 1 Hz step as a backstop. A disconnect (`releaseHolds`) or a
+grace-expiry drop (`removePlayer`) releases that player's holds; expiry of a hold
+instruction clears its controls too.
+
+### D64. Synchronized hold — `ExpectedOutcome "syncHold"`
+`{ kind: "syncHold", forMs, withControlId, withControlLabel }` on an instruction
+whose primary `controlId` is the other control. Both must be held at once;
+progress = `now − max(heldSinceA, heldSinceB)` while both are held, **0 the
+instant either is released** (the "reset" rule). `generatePanels` guarantees ≥ 2
+hold controls on ≥ 2 owners for any ≥ 2-player game (converting the control that
+disturbs panel complexity least); `nextInstruction` emits a syncHold with
+`SYNC_HOLD_CHANCE` (0.4) when ≥ 2 free hold controls exist. Text:
+`A + B → УДЕРЖАТЬ ВМЕСТЕ 3с`.
+
+### D65. Hold instructions get a generous deadline; progress bar is green
+`addInstruction` extends a hold/syncHold deadline by `forMs + 5000` — the
+coordination is the challenge, not the clock. `InstructionView.hold =
+{ heldMs, forMs }`; the instruction row shows a green fill (hold progress)
+instead of the red countdown while it's a hold. The hold control shows a pulsing
+"ДЕРЖИМ" while held. `mash` stays out until Stage 7.

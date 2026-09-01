@@ -582,17 +582,28 @@ button {
 }
 .hold--active {
   border-color: var(--green);
-  box-shadow: 0 0 22px rgba(55, 220, 154, 0.25);
+  box-shadow: 0 0 22px rgba(55, 220, 154, 0.3);
+}
+.hold--active .hold__label {
+  color: #fff;
+  text-shadow: 0 0 14px rgba(55, 220, 154, 0.6);
 }
 .hold--active .hold__pct {
   color: var(--text);
 }
-.hold--done {
-  border-color: var(--green);
+/* Gameplay: a soft pulse while the server registers the hold. */
+.hold__fill--pulse {
+  background: linear-gradient(0deg, #1c6f5a 0%, #2fae86 100%);
+  animation: hold-pulse 900ms ease-in-out infinite;
 }
-.hold--done .hold__label {
-  color: var(--green);
-  text-shadow: 0 0 14px rgba(55, 220, 154, 0.5);
+@keyframes hold-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.85;
+  }
 }
 
 /* ---- Mash -------------------------------------------------- */
@@ -1171,6 +1182,10 @@ body.no-scroll {
 }
 .instr__bar-fill--low {
   background: var(--red);
+}
+.instr__bar-fill--hold {
+  background: var(--green);
+  transition: width 120ms linear;
 }
 .instr__empty {
   margin: 0;

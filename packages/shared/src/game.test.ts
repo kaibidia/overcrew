@@ -8,6 +8,8 @@ import {
   difficultyFor,
   generateInstructions,
   generatePanels,
+  holdComplete,
+  holdProgressMs,
   instructionText,
   levelForElapsed,
   nextInstruction,
@@ -57,6 +59,10 @@ function satisfyingIntent(
       };
     case "dial":
       return { type: "set", controlId: control.id, value: expected.position };
+    case "hold":
+    case "syncHold":
+      // hold completion is time-based; tests drive it separately
+      return { type: "hold-start", controlId: control.id };
   }
 }
 
@@ -91,7 +97,9 @@ describe("generatePanels (Stage 4)", () => {
       for (const t of totals) expect(t).toBeGreaterThanOrEqual(10);
       spreadMax = Math.max(spreadMax, Math.max(...totals) - Math.min(...totals));
     }
-    expect(spreadMax).toBeLessThanOrEqual(8);
+    // slightly wider band than the pure Stage-4 generator: forcing ≥ 2 hold
+    // controls (weight 6) for synchronized holds disturbs the balance a little.
+    expect(spreadMax).toBeLessThanOrEqual(12);
   });
 
   it("produces different panels for different players", () => {
@@ -171,9 +179,17 @@ describe("generateInstructions", () => {
       const o = controls.find((c) => c.id === i.controlId)!.ownerPlayerId!;
       perOwner.set(o, (perOwner.get(o) ?? 0) + 1);
     }
+    // count both controls of a synchronized hold toward their owners
+    for (const i of active) {
+      const e = i.expected;
+      if (e.kind === "syncHold") {
+        const o = controls.find((c) => c.id === e.withControlId)!.ownerPlayerId!;
+        perOwner.set(o, (perOwner.get(o) ?? 0) + 1);
+      }
+    }
     const counts = players.map((p) => perOwner.get(p) ?? 0);
     expect(Math.min(...counts)).toBeGreaterThan(0);
-    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(2);
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(3);
   });
 
   it("avoidControlId keeps the just-completed control from being re-picked", () => {
@@ -202,6 +218,90 @@ describe("instructionText", () => {
       "КОНТРОЛ → 67 ± 3",
     );
     expect(t({ kind: "dial", position: 5 })).toBe("КОНТРОЛ → 6");
+    expect(t({ kind: "hold", forMs: 3000 })).toBe("КОНТРОЛ → УДЕРЖАТЬ 3с");
+    expect(
+      t({ kind: "syncHold", forMs: 4000, withControlId: "x", withControlLabel: "ДЕМПФЕР" }),
+    ).toBe("КОНТРОЛ + ДЕМПФЕР → УДЕРЖАТЬ ВМЕСТЕ 4с");
+  });
+});
+
+describe("hold mechanics (Stage 6)", () => {
+  it("a ≥ 2-player game always has ≥ 2 hold controls", () => {
+    for (let s = 0; s < 20; s++) {
+      const controls = generatePanels(["a", "b", "c"], createRng(`h${s}`));
+      const holds = controls.filter((c) => c.definition.kind === "hold");
+      expect(holds.length).toBeGreaterThanOrEqual(2);
+      // spread across at least two owners so a sync hold needs two players
+      expect(new Set(holds.map((c) => c.ownerPlayerId)).size).toBeGreaterThanOrEqual(2);
+      expect(hasUniqueLabels(controls)).toBe(true);
+    }
+  });
+
+  it("generateInstructions eventually produces a synchronized hold", () => {
+    let sync = 0;
+    for (let s = 0; s < 40; s++) {
+      const controls = generatePanels(["a", "b", "c"], createRng(`sp${s}`));
+      for (const i of genIns(controls, `si${s}`, ["a", "b", "c"])) {
+        if (i.expected.kind === "syncHold") {
+          sync++;
+          expect(i.text).toContain(i.controlLabel);
+          expect(i.text).toContain(i.expected.withControlLabel);
+          expect(i.controlId).not.toBe(i.expected.withControlId);
+        }
+      }
+    }
+    expect(sync).toBeGreaterThan(0);
+  });
+
+  it("solo hold completes only after the control is held for forMs", () => {
+    const ins: Instruction = {
+      id: "h1",
+      controlId: "A",
+      controlLabel: "СТАБИЛИЗАТОР",
+      shownToPlayerId: "p",
+      expected: { kind: "hold", forMs: 3000 },
+      text: "…",
+      status: "active",
+      deadlineAt: 999_999,
+      totalMs: 15_000,
+    };
+    const held = new Map<string, number>();
+    expect(holdComplete(ins, held, 10_000)).toBe(false); // not held
+    held.set("A", 10_000);
+    expect(holdProgressMs(ins, held, 12_000)).toBe(2000);
+    expect(holdComplete(ins, held, 12_500)).toBe(false);
+    expect(holdComplete(ins, held, 13_000)).toBe(true);
+    held.delete("A"); // released
+    expect(holdComplete(ins, held, 20_000)).toBe(false);
+  });
+
+  it("sync hold needs BOTH controls; releasing either resets progress", () => {
+    const ins: Instruction = {
+      id: "s1",
+      controlId: "A",
+      controlLabel: "СТАБИЛИЗАТОР",
+      shownToPlayerId: "p",
+      expected: {
+        kind: "syncHold",
+        forMs: 3000,
+        withControlId: "B",
+        withControlLabel: "ДЕМПФЕР",
+      },
+      text: "…",
+      status: "active",
+      deadlineAt: 999_999,
+      totalMs: 15_000,
+    };
+    const held = new Map<string, number>();
+    held.set("A", 1000);
+    expect(holdProgressMs(ins, held, 5000)).toBe(0); // only one held
+    held.set("B", 2000);
+    expect(holdProgressMs(ins, held, 5000)).toBe(3000); // now - max(1000, 2000)
+    expect(holdComplete(ins, held, 5000)).toBe(true);
+    held.delete("B"); // player B lets go
+    expect(holdProgressMs(ins, held, 6000)).toBe(0);
+    held.set("B", 6000); // B re-grabs — progress restarts from the later time
+    expect(holdProgressMs(ins, held, 7000)).toBe(1000);
   });
 });
 
@@ -211,10 +311,11 @@ describe("validateIntent — all six types", () => {
     return { controls, mine: controls.filter((c) => c.ownerPlayerId === "me") };
   };
 
-  it("completes an instruction for every control kind when the owner acts", () => {
+  it("completes an instruction for every value-based control kind when the owner acts", () => {
     for (let s = 0; s < 30; s++) {
       const { controls, mine } = build(`v${s}`);
       for (const control of mine) {
+        if (control.definition.kind === "hold") continue; // time-based, tested elsewhere
         const ins = nextInstruction(
           "other",
           ["me", "other"],
@@ -223,6 +324,7 @@ describe("validateIntent — all six types", () => {
           createRng(`x${s}${control.id}`),
           insOpts,
         );
+        if (ins.expected.kind === "syncHold") continue;
         const res = validateIntent(
           { controls, instructions: [ins] },
           "me",

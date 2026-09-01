@@ -84,16 +84,26 @@ export function GameScreen({ api }: { api: RoomApi }) {
         ) : (
           <ul>
             {gv.instructions.map((i) => {
-              const left = Math.max(0, i.remainingMs - since);
-              const pct = i.totalMs > 0 ? (left / i.totalMs) * 100 : 0;
+              // A hold instruction shows green hold-progress; others the red countdown.
+              let pct: number;
+              let cls: string;
+              if (i.hold) {
+                const heldMs = Math.min(
+                  i.hold.forMs,
+                  i.hold.heldMs + (i.hold.heldMs > 0 ? since : 0),
+                );
+                pct = (heldMs / i.hold.forMs) * 100;
+                cls = "instr__bar-fill instr__bar-fill--hold";
+              } else {
+                const left = Math.max(0, i.remainingMs - since);
+                pct = i.totalMs > 0 ? (left / i.totalMs) * 100 : 0;
+                cls = `instr__bar-fill${pct < 30 ? " instr__bar-fill--low" : ""}`;
+              }
               return (
                 <li key={i.id} className="instr__row">
                   <span className="instr__text">{i.text}</span>
                   <span className="instr__bar">
-                    <span
-                      className={`instr__bar-fill${pct < 30 ? " instr__bar-fill--low" : ""}`}
-                      style={{ width: `${pct}%` }}
-                    />
+                    <span className={cls} style={{ width: `${pct}%` }} />
                   </span>
                 </li>
               );
