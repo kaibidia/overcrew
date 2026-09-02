@@ -15,6 +15,16 @@
   --touch: 56px;
   --radius: 14px;
 
+  /* Start-screen panel skin (industrial retro-space hardware) */
+  --panel-cream: #f1ede2;
+  --panel-metal: #c9c2a6;
+  --panel-amber: #ffb84a;
+  --panel-orange: #ff6a3d;
+  --panel-cyan: #7ec8ff;
+  --panel-green: #22ff9a;
+  --panel-red: #ff5c4d;
+  --f-stencil: "Russo One", "Oswald", "Arial Narrow", system-ui, sans-serif;
+
   color-scheme: dark;
 }
 
