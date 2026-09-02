@@ -6,14 +6,22 @@ import {
   randomNickname,
 } from "@overcrew/shared";
 import type { RoomApi } from "../net/useRoom";
-import { Viewport } from "../console/Viewport";
+import { Viewport, type ViewportInsert } from "../console/Viewport";
 import { RedButton } from "../console/RedButton";
+
+/** distant space views for the porthole — error screen is NOT in this pool */
+const NORMAL_INSERTS: ViewportInsert[] = ["planet", "horizon", "ship", "asteroid"];
 
 export function PreLobby({ api }: { api: RoomApi }) {
   const [mode, setMode] = useState<"create" | "join">("create");
   const [nickname, setNickname] = useState("");
   const [suggestion, setSuggestion] = useState(randomNickname);
   const [code, setCode] = useState("");
+  // picked once when the start screen mounts; stays stable across re-renders
+  // and is restored after an error clears
+  const [screenInsert] = useState(
+    () => NORMAL_INSERTS[Math.floor(Math.random() * NORMAL_INSERTS.length)],
+  );
 
   const offline = api.conn !== "online";
   const effectiveName = nickname.trim() || suggestion;
@@ -52,10 +60,7 @@ export function PreLobby({ api }: { api: RoomApi }) {
   return (
     <div className="console-screen">
       <div className="console">
-        <Viewport
-          insert={mode === "join" ? "ship" : "planet"}
-          error={error !== null}
-        />
+        <Viewport insert={screenInsert} error={error !== null} />
         <div className="console__frame" aria-hidden="true" />
         {error && (
           <div className="vp__err" role="alert">

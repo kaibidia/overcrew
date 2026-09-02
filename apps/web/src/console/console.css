@@ -53,6 +53,8 @@
   --warm-glow: #d95a1a; /* outer glow, low-intensity emissive */
   --warm-metal: #a9825c; /* muted metallic highlight, inactive edges */
   --warm-disabled: rgba(216, 190, 148, 0.45);
+  --warm-cyan: #9fc9ce; /* JOIN active — aged cyan indicator bulb, not LED */
+  --warm-cyan-bright: #b7d9d8; /* JOIN brighter highlight */
 
   /* local visual constants for this screen */
   --room-controls-gap: 4%;
@@ -146,10 +148,11 @@
 
 .brand {
   left: 5%;
-  top: 31.5%;
+  top: 26.5%;
   width: 90%;
-  /* width controls; height follows the asset's intrinsic ratio — never distort */
-  aspect-ratio: 1600 / 420;
+  /* width controls; height follows the asset's intrinsic ratio — never distort.
+     the new name plate is much taller than the old strip. */
+  aspect-ratio: 1600 / 563;
   background: url("/console/label.webp") 50% 50% / contain no-repeat;
 }
 
@@ -157,7 +160,7 @@
 
 .mode {
   left: 5%;
-  top: 45.5%;
+  top: 45%;
   width: 90%;
   aspect-ratio: 1400 / 248;
   background: url("/console/mode.webp") center / contain no-repeat;
@@ -187,20 +190,30 @@
   right: 6.5%;
   width: 41%;
 }
-/* selected: the dark material is lit from within by the same warm amber
-   cockpit light on both sides — soft, no hard edge, never blue or white */
-.mode__seg--on {
-  color: var(--warm-cream);
+/* selected: the dark material is lit from within by a physical indicator
+   bulb — warm amber for CREATE, aged cyan for JOIN. Soft, no hard edge,
+   never white or neon. Two clearly different illuminated controls. */
+.mode__seg--left.mode__seg--on {
+  color: #f2c879;
   text-shadow:
-    0 0 4px rgba(255, 192, 120, 0.35),
-    0 0 10px rgba(255, 138, 50, 0.18);
-}
-.mode__seg--left.mode__seg--on,
-.mode__seg--right.mode__seg--on {
+    0 0 4px rgba(255, 174, 72, 0.4),
+    0 0 10px rgba(217, 90, 26, 0.18);
   background: radial-gradient(
     ellipse 58% 62% at 50% 52%,
-    rgba(255, 192, 120, 0.2) 0%,
+    rgba(255, 174, 72, 0.28) 0%,
     rgba(255, 138, 50, 0.1) 55%,
+    transparent 78%
+  );
+}
+.mode__seg--right.mode__seg--on {
+  color: var(--warm-cyan);
+  text-shadow:
+    0 0 4px rgba(183, 217, 216, 0.4),
+    0 0 10px rgba(83, 143, 153, 0.16);
+  background: radial-gradient(
+    ellipse 58% 62% at 50% 52%,
+    rgba(111, 175, 185, 0.22) 0%,
+    rgba(83, 143, 153, 0.12) 55%,
     transparent 78%
   );
 }
@@ -209,15 +222,16 @@
 
 .nick {
   left: 5%;
-  top: 54%;
+  top: 55.5%;
   width: 90%;
   aspect-ratio: 1400 / 359;
   background: url("/console/nickname.webp") center / contain no-repeat;
 }
 .nick__label {
   position: absolute;
-  left: 4%;
-  top: 3%;
+  /* centred on the engraved plate between the two screws, not on the module */
+  left: 6%;
+  top: 4%;
   width: 31%;
   height: 19%;
   display: grid;
@@ -284,7 +298,7 @@
    Both children keep their own aspect ratio; only the gap is tuned. */
 .plate {
   left: 5%;
-  top: 66.8%;
+  top: 69%;
   width: 90%;
   aspect-ratio: 1400 / 429;
   background: url("/console/plate.webp") center / contain no-repeat;
@@ -345,10 +359,11 @@
 }
 .code__label {
   position: absolute;
+  /* vertically centred on the raised name plate between its screws */
   left: 22%;
-  top: 4%;
+  top: 6.5%;
   width: 56%;
-  height: 18%;
+  height: 17%;
   display: grid;
   place-items: center;
   pointer-events: none;
@@ -405,7 +420,7 @@
 }
 .splash__brand {
   width: min(86%, 26rem);
-  aspect-ratio: 1600 / 420;
+  aspect-ratio: 1600 / 563;
   background: url("/console/label.webp") center / contain no-repeat;
 }
 .splash__status {
