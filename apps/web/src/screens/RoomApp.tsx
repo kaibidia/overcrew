@@ -21,10 +21,12 @@ export function RoomApp() {
   let screen;
   let inGame = false;
   let entry = false;
+  let lobby = false;
   if (!api.view) {
     entry = true;
     screen = api.conn === "connecting" ? <Splash /> : <PreLobby api={api} />;
   } else if (api.view.phase === "lobby") {
+    lobby = true;
     screen = <Lobby api={api} />;
   } else {
     screen = <GameScreen api={api} />;
@@ -33,7 +35,7 @@ export function RoomApp() {
 
   return (
     <div
-      className={`room${inGame ? " room--game" : ""}${entry ? " room--entry" : ""}`}
+      className={`room${inGame ? " room--game" : ""}${entry || lobby ? " room--entry" : ""}`}
     >
       {api.error && !entry && (
         <div className="room__error" role="alert">

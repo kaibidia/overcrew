@@ -169,7 +169,7 @@ export function useRoom(): RoomApi {
     setError(null);
   }, []);
 
-  const hostCmd = useCallback((event: string) => {
+  const cmd = useCallback((event: string, payload: unknown = {}) => {
     const socket = socketRef.current;
     if (!socket?.connected) {
       setError("Нет связи с сервером.");
@@ -178,14 +178,14 @@ export function useRoom(): RoomApi {
     setError(null);
     socket
       .timeout(6000)
-      .emit(event, {}, (err: Error | null, r?: Ack<null>) => {
+      .emit(event, payload, (err: Error | null, r?: Ack<null>) => {
         if (err || !r) setError("Сервер не отвечает.");
         else if (!r.ok) setError(r.message);
       });
   }, []);
 
-  const start = useCallback(() => hostCmd(ClientEvent.Start), [hostCmd]);
-  const restart = useCallback(() => hostCmd(ClientEvent.Restart), [hostCmd]);
+  const start = useCallback(() => cmd(ClientEvent.Start), [cmd]);
+  const restart = useCallback(() => cmd(ClientEvent.Restart), [cmd]);
 
   const sendIntent = useCallback((intent: Intent) => {
     socketRef.current?.emit(ClientEvent.Intent, intent);

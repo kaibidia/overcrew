@@ -6,11 +6,8 @@ import {
   randomNickname,
 } from "@overcrew/shared";
 import type { RoomApi } from "../net/useRoom";
-import { Viewport, type ViewportInsert } from "../console/Viewport";
+import { Viewport, randomViewportInsert } from "../console/Viewport";
 import { RedButton } from "../console/RedButton";
-
-/** distant space views for the porthole — error screen is NOT in this pool */
-const NORMAL_INSERTS: ViewportInsert[] = ["planet", "horizon", "ship", "asteroid"];
 
 export function PreLobby({ api }: { api: RoomApi }) {
   const [mode, setMode] = useState<"create" | "join">("create");
@@ -19,9 +16,7 @@ export function PreLobby({ api }: { api: RoomApi }) {
   const [code, setCode] = useState("");
   // picked once when the start screen mounts; stays stable across re-renders
   // and is restored after an error clears
-  const [screenInsert] = useState(
-    () => NORMAL_INSERTS[Math.floor(Math.random() * NORMAL_INSERTS.length)],
-  );
+  const [screenInsert] = useState(randomViewportInsert);
 
   const offline = api.conn !== "online";
   const effectiveName = nickname.trim() || suggestion;

@@ -7,6 +7,19 @@
  */
 export type ViewportInsert = "planet" | "asteroid" | "ship" | "horizon";
 
+/** distant space views for the porthole — the error screen is never in this pool */
+export const NORMAL_VIEWPORT_INSERTS: ViewportInsert[] = [
+  "planet",
+  "horizon",
+  "ship",
+  "asteroid",
+];
+
+export function randomViewportInsert(): ViewportInsert {
+  const i = Math.floor(Math.random() * NORMAL_VIEWPORT_INSERTS.length);
+  return NORMAL_VIEWPORT_INSERTS[i] ?? "planet";
+}
+
 export function Viewport({
   insert = "planet",
   error = false,
