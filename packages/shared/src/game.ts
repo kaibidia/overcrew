@@ -39,6 +39,7 @@ import {
   type SliderTask,
 } from "./tasks";
 import type { RoomView } from "./room";
+import type { ScoreboardView } from "./telemetry";
 
 /** Control types that can appear in a generated panel. `mash` is Stage 7. */
 export const GAME_TYPES: readonly ControlType[] = [
@@ -170,6 +171,8 @@ export interface PlayerView {
   panel: ControlInstance[];
   instructions: InstructionView[];
   ship: ShipView;
+  /** Present only once the game has ended — the crash scoreboard (Stage 7). */
+  scoreboard?: ScoreboardView;
 }
 
 // --- Intents -------------------------------------------------------------

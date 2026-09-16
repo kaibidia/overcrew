@@ -6,3 +6,4 @@ export * from "./tasks";
 export * from "./panel";
 export * from "./room";
 export * from "./game";
+export * from "./telemetry";

@@ -1025,6 +1025,52 @@ The initial public deployment should ideally still require:
 
 ---
 
+# 13a. Telemetry & crash scoreboard (implemented ahead of schedule)
+
+Real playtesting surfaced a concrete gap: nobody could tell who — or which
+instruction — actually caused a crash. This was implemented immediately, out
+of the staged order above, per a dedicated spec:
+`docs/Overcrew — Game Telemetry & Crash Scoreboard.md`.
+
+Treat this as already-built infrastructure when working on later stages
+(Critical events, Game feel) — extend it, do not re-invent it.
+
+## What exists
+
+- An in-memory telemetry event log owned by `Game`
+  (`apps/server/src/game.ts`), appended only at real state transitions:
+  instruction created / transmitted / execution started / resolved, life
+  lost, crash. No new subsystem, no persistence layer.
+- A pure reducer, `buildScoreboard()` (`packages/shared/src/telemetry.ts`),
+  turns that log into a `ScoreboardView`. The scoreboard is a **projection**
+  of telemetry — there is no separate scoring logic that could drift from
+  the actual game state.
+- The scoreboard is attached to `PlayerView.scoreboard` once the game ends
+  and rendered on the existing `GameOver` screen — no new screen, no
+  redesign.
+
+## Principles to keep whenever this is touched again
+
+- **Source vs target, never conflated.** An instruction's *source* is
+  whoever it is shown to (responsible for communicating it); its *target*
+  is the owner of the control (responsible for acting on it). Communication
+  contribution and execution contribution are tracked separately — the same
+  independence rule as §1's "instructions and controls are independent."
+- **No fabricated states.** Only terminal states the engine actually
+  produces are recorded (`executed`, `expired`, `cancelled`). Do not invent
+  an "executed incorrectly" or "won" outcome just because a generic
+  telemetry spec expects one — `validateIntent` has no such state, and the
+  game currently has no win condition.
+- **Crash causality is exact, not inferred.** The instruction whose expiry
+  actually brought health to zero is the cause — never "the player with the
+  most failures." A structural game-over (crew too small) has no
+  instruction to blame; leave it unattributed rather than guessing.
+- **"Transmission" means socket delivery, not speech recognition.** Overcrew
+  has no voice input — an instruction counts as transmitted once the server
+  actually delivers it to a connected client.
+
+---
+
 # 14. Data model principles
 
 Keep these concepts independent.

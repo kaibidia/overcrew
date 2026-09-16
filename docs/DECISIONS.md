@@ -518,3 +518,67 @@ coordination is the challenge, not the clock. `InstructionView.hold =
 { heldMs, forMs }`; the instruction row shows a green fill (hold progress)
 instead of the red countdown while it's a hold. The hold control shows a pulsing
 "ДЕРЖИМ" while held. `mash` stays out until Stage 7.
+
+---
+
+## 2026-09-16 — Out-of-plan: game telemetry & crash scoreboard
+
+Implemented ahead of the roadmap at the user's request, after real playtesting
+surfaced that "who actually caused the crash" was invisible. Spec:
+`docs/Overcrew — Game Telemetry & Crash Scoreboard.md`.
+
+### D66. Telemetry is an in-memory event log owned by `Game`, not a new system
+`Game` (`apps/server/src/game.ts`) pushes `TelemetryEvent`s
+(`packages/shared/src/telemetry.ts`) at its own existing state transitions —
+`addInstruction`, `completeInstruction`, the expire loop in `step()`,
+`removePlayer`, hold-start. No new subsystem, no persistence layer (none exists
+in this project and this task doesn't justify adding one): the log is a plain
+array on the `Game` instance, inspectable via `getTelemetry()` and dumped to the
+console on game-over (`index.ts`) as the current "export" path. Nothing here
+changes gameplay or timing.
+
+### D67. Role vocabulary: "source" (recipient) vs "target" (control owner)
+Reused the game's own invariant instead of inventing terms: an instruction's
+**source** is `shownToPlayerId` (reads it, responsible for shouting it out);
+its **target** is the owner of `controlId` (must physically act on it). These
+are independent by design, so telemetry never conflates communication
+contribution with execution contribution — a player's `transmitted` count
+(source role) and `executed`/`failed` counts (target role) are tracked
+separately (`ScoreboardView`/`PlayerScoreLine`).
+
+### D68. "Transmission" = delivery to a connected socket; no speech recognition
+Overcrew has no voice/speech input — "successfully transmitted" is defined as
+the server actually delivering a `PlayerView` containing the instruction to the
+source player's connected socket at least once. `index.ts`'s `broadcastGame` is
+the only place that knows this, so it calls the new `Game.markSeen(id)` per
+active instruction on every emit to a connected member; `Game` retroactively
+records a failed transmission (`recipient_never_connected`) if an instruction
+resolves without ever being seen. This is the literal, honest mapping of
+"transmission telemetry" onto a shout-based game with no recognition step.
+
+### D69. Only real terminal states are recorded — no fabricated ones
+`InstructionResolution` is `"executed" | "expired" | "cancelled"` only.
+`validateIntent` has no "executed incorrectly" or "invalid" state — an action
+that doesn't satisfy the active instruction is a valid no-op, not a failure
+(this predates telemetry, see `validateIntent`'s own docstring); inventing a
+status the engine doesn't produce was explicitly out of scope. `"cancelled"` is
+new and real: a player leaving orphans their instructions (`removePlayer`) —
+that's neither a success nor a deadline miss, so it counts toward nobody's
+`failed` total. Similarly `EndReason` is only `"health" | "crew"` — Overcrew is
+an endless survival game with no "completed / won" outcome to report.
+
+### D70. Crash causality: first expiry to actually zero the health, not a guess
+`step()`'s expire loop now applies each expired instruction's penalty one at a
+time and remembers the *first* one whose penalty brings health to ≤ 0 as the
+`CrashCause` (`instructionId`, the control's owner as `responsiblePlayerId`,
+`sourcePlayerId`, `targetControlId`) — later expiries in the same tick still
+apply but aren't blamed. A `"crew"` game-over (too few players left) has no
+instruction to blame, so `responsiblePlayerId`/`causedByInstructionId` are left
+undefined rather than guessed. `buildScoreboard` (pure reducer, no separate
+scoring logic) turns the event log into `ScoreboardView` once, cached on
+`Game` at `endGame()` and attached to `PlayerView.scoreboard` from then on.
+
+### D71. Scoreboard lives on the existing `GameOver` screen, same visual system
+`GameScreen.tsx`'s `GameOver` renders `gv.scoreboard` as a compact per-player
+row list (`.over__board*` in `styles.css`, matching `--surface`/`--edge`/
+`--red`) below the existing top-level stats — no redesign, no new screen.

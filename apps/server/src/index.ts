@@ -78,11 +78,23 @@ function broadcastGame(room: Room, game: Game): void {
   if (game.isOver && room.phase === "playing") {
     room.phase = "gameover";
     io.to(roomChannel(room)).emit(ServerEvent.RoomState, room.view());
+    // Dev-visible telemetry export: full event log + computed scoreboard for
+    // this session. No persistence layer exists yet (see docs/DECISIONS.md) —
+    // for now this console line is the way to inspect a completed game.
+    console.log(
+      `game ${room.code} over: scoreboard=%j`,
+      game.getScoreboard(),
+    );
   }
   const view = room.view();
   for (const m of room.members) {
     if (m.socketId) {
-      io.to(m.socketId).emit(ServerEvent.PlayerView, game.viewFor(view, m.id));
+      const pv = game.viewFor(view, m.id);
+      // This is the only point that knows a PlayerView actually reached a
+      // live, connected socket — the closest thing to "successfully
+      // transmitted" this engine (no speech recognition) can observe.
+      for (const ins of pv.instructions) game.markSeen(ins.id);
+      io.to(m.socketId).emit(ServerEvent.PlayerView, pv);
     }
   }
 }

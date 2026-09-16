@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from "react";
-import type { PlayerView } from "@overcrew/shared";
+import type { CrashInfo, PlayerView, PublicPlayer } from "@overcrew/shared";
 import { PanelGrid } from "../game/PanelGrid";
 import type { RoomApi } from "../net/useRoom";
 
@@ -117,11 +117,30 @@ export function GameScreen({ api }: { api: RoomApi }) {
   );
 }
 
+/** "«ГИРОСКОП → ВВЕРХ» не выполнено вовремя — в ответе Комета." */
+function crashCauseText(crash: CrashInfo, players: readonly PublicPlayer[]): string {
+  if (crash.reason === "crew") {
+    return "На борту осталось меньше двух игроков.";
+  }
+  if (crash.instructionText && crash.responsiblePlayerId) {
+    const name =
+      players.find((p) => p.id === crash.responsiblePlayerId)?.nickname ??
+      "неизвестный игрок";
+    return `«${crash.instructionText}» не выполнено вовремя — в ответе ${name}.`;
+  }
+  return "Здоровье корабля исчерпано.";
+}
+
+function formatAvgMs(ms: number | null): string {
+  return ms === null ? "—" : `${(ms / 1000).toFixed(1)}с`;
+}
+
 function GameOver({ api, gv }: { api: RoomApi; gv: PlayerView }) {
   useNoScroll();
   const ship = gv.ship;
   const iAmHost =
     gv.room.players.find((p) => p.id === gv.you)?.isHost === true;
+  const board = gv.scoreboard;
 
   return (
     <div className="over">
@@ -142,6 +161,43 @@ function GameOver({ api, gv }: { api: RoomApi; gv: PlayerView }) {
           <span>уровень</span>
         </div>
       </div>
+
+      {board && (
+        <div className="over__board">
+          {board.crash && (
+            <p className="over__cause">{crashCauseText(board.crash, gv.room.players)}</p>
+          )}
+          <div className="over__board-head">
+            <span className="over__board-name">игрок</span>
+            <span>перед.</span>
+            <span>вып.</span>
+            <span>пров.</span>
+            <span>сред.</span>
+          </div>
+          <ul className="over__board-list">
+            {board.players.map((p) => {
+              const nickname =
+                gv.room.players.find((pl) => pl.id === p.playerId)?.nickname ??
+                p.playerId;
+              return (
+                <li
+                  key={p.playerId}
+                  className={`over__board-row${p.causedCrash ? " over__board-row--crash" : ""}`}
+                >
+                  <span className="over__board-name">
+                    {nickname}
+                    {p.playerId === gv.you && " (ты)"}
+                  </span>
+                  <span>{p.transmitted}</span>
+                  <span>{p.executed}</span>
+                  <span>{p.failed}</span>
+                  <span>{formatAvgMs(p.avgExecutionMs)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {iAmHost ? (
         <button type="button" className="pre__go" onClick={api.restart}>
