@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { difficultyFor, type Intent } from "@overcrew/shared";
+import { buildScoreboard, difficultyFor, type Intent } from "@overcrew/shared";
 import { Game } from "./game";
 
 const PLAYERS = ["A", "B", "C"];
@@ -37,6 +37,32 @@ function valueBasedInstruction(g: Game): string {
   );
   if (!ins) throw new Error("no value-based instruction");
   return ins.id;
+}
+
+/** Force the first instruction to be a solo hold on a real hold control. */
+function forceHold(g: Game, forMs = 3000) {
+  const c = g.controls.find((x) => x.definition.kind === "hold")!;
+  const ins = g.instructions[0]!;
+  ins.expected = { kind: "hold", forMs };
+  ins.controlId = c.id;
+  ins.controlLabel = c.label;
+  ins.deadlineAt = 9_999_999_999;
+  return { ins, c };
+}
+
+function forceSyncHold(g: Game, forMs = 3000) {
+  const [a, b] = g.controls.filter((x) => x.definition.kind === "hold");
+  const ins = g.instructions[0]!;
+  ins.expected = {
+    kind: "syncHold",
+    forMs,
+    withControlId: b!.id,
+    withControlLabel: b!.label,
+  };
+  ins.controlId = a!.id;
+  ins.controlLabel = a!.label;
+  ins.deadlineAt = 9_999_999_999;
+  return { ins, a: a!, b: b! };
 }
 
 describe("Game — setup", () => {
@@ -89,32 +115,6 @@ describe("Game — completing instructions", () => {
 });
 
 describe("Game — holds (Stage 6)", () => {
-  /** Force the first instruction to be a solo hold on a real hold control. */
-  function forceHold(g: Game, forMs = 3000) {
-    const c = g.controls.find((x) => x.definition.kind === "hold")!;
-    const ins = g.instructions[0]!;
-    ins.expected = { kind: "hold", forMs };
-    ins.controlId = c.id;
-    ins.controlLabel = c.label;
-    ins.deadlineAt = 9_999_999_999;
-    return { ins, c };
-  }
-
-  function forceSyncHold(g: Game, forMs = 3000) {
-    const [a, b] = g.controls.filter((x) => x.definition.kind === "hold");
-    const ins = g.instructions[0]!;
-    ins.expected = {
-      kind: "syncHold",
-      forMs,
-      withControlId: b!.id,
-      withControlLabel: b!.label,
-    };
-    ins.controlId = a!.id;
-    ins.controlLabel = a!.label;
-    ins.deadlineAt = 9_999_999_999;
-    return { ins, a: a!, b: b! };
-  }
-
   it("solo hold completes only after being held continuously for forMs", () => {
     const { g, advance } = makeGame(PLAYERS, "hold");
     const { ins, c } = forceHold(g, 3000);
@@ -259,6 +259,115 @@ describe("Game — crew changes", () => {
   });
 });
 
+describe("Game — telemetry & crash scoreboard (Stage 7)", () => {
+  it("gives every instruction a unique id", () => {
+    const { g } = makeGame(PLAYERS, "telemetry-ids");
+    const ids = g.instructions.map((i) => i.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("has no scoreboard until the game actually ends", () => {
+    const { g } = makeGame(PLAYERS, "telemetry-none");
+    expect(g.getScoreboard()).toBeUndefined();
+  });
+
+  it("records transmission separately from execution, timed from the transmission", () => {
+    const { g, advance } = makeGame(PLAYERS, "telemetry-exec");
+    const insId = valueBasedInstruction(g);
+    advance(500);
+    g.markSeen(insId); // delivered to a connected socket
+    advance(1200);
+    const { ownerId, intent } = intentFor(g, insId);
+    g.applyIntent(ownerId, intent);
+
+    const events = g.getTelemetry();
+    const transmitted = events.find(
+      (e) => e.type === "instruction_transmitted" && e.instructionId === insId,
+    );
+    expect(transmitted).toMatchObject({ success: true });
+    const resolved = events.find(
+      (e) => e.type === "instruction_resolved" && e.instructionId === insId,
+    );
+    expect(resolved).toMatchObject({ status: "executed", durationMs: 1200 });
+  });
+
+  it("marks an instruction not-transmitted if it expires before ever reaching a connected client", () => {
+    const { g } = makeGame(PLAYERS, "telemetry-notx");
+    const insId = g.instructions[0]!.id;
+    g.instructions.forEach((i) => (i.deadlineAt = 0));
+    g.step();
+    const transmitted = g
+      .getTelemetry()
+      .find((e) => e.type === "instruction_transmitted" && e.instructionId === insId);
+    expect(transmitted).toMatchObject({
+      success: false,
+      failureReason: "recipient_never_connected",
+    });
+  });
+
+  it("hold instructions measure execution duration from hold-start, not from transmission", () => {
+    const { g, advance } = makeGame(PLAYERS, "telemetry-hold");
+    const { ins, c } = forceHold(g, 3000);
+    advance(500);
+    g.markSeen(ins.id); // seen well before the player actually grabs the control
+    advance(4000); // a long gap between seeing it and acting
+    const owner = c.ownerPlayerId!;
+    g.applyIntent(owner, { type: "hold-start", controlId: c.id });
+    advance(3000);
+    g.step();
+
+    const resolved = g
+      .getTelemetry()
+      .find((e) => e.type === "instruction_resolved" && e.instructionId === ins.id);
+    expect(resolved).toMatchObject({ status: "executed", durationMs: 3000 });
+  });
+
+  it("identifies the actual instruction and control owner responsible for a health crash", () => {
+    const { g, advance } = makeGame(["A", "B"], "telemetry-crash");
+    for (let k = 0; k < 40 && !g.isOver; k++) {
+      g.instructions.forEach((i) => (i.deadlineAt = 0));
+      advance(1_000);
+      g.step();
+    }
+    expect(g.isOver).toBe(true);
+    const board = g.getScoreboard();
+    expect(board?.crash?.reason).toBe("health");
+    expect(board?.crash?.instructionId).toBeDefined();
+    const respId = board?.crash?.responsiblePlayerId;
+    expect(["A", "B"]).toContain(respId);
+    expect(board!.players.find((p) => p.playerId === respId)!.causedCrash).toBe(true);
+  });
+
+  it("does not attribute a crash to anyone when the crew simply falls apart", () => {
+    const { g } = makeGame(["A", "B"], "telemetry-crew");
+    g.removePlayer("B");
+    const board = g.getScoreboard();
+    expect(board?.crash?.reason).toBe("crew");
+    expect(board?.crash?.responsiblePlayerId).toBeUndefined();
+    expect(board?.crash?.instructionId).toBeUndefined();
+  });
+
+  it("a player leaving cancels their orphaned instructions instead of failing them", () => {
+    const { g } = makeGame(["A", "B", "C"], "telemetry-leave");
+    const orphanedIds = g.instructions
+      .filter((i) => i.shownToPlayerId === "C")
+      .map((i) => i.id);
+    expect(orphanedIds.length).toBeGreaterThan(0);
+    g.removePlayer("C");
+
+    const events = g.getTelemetry();
+    for (const id of orphanedIds) {
+      const resolved = events.find(
+        (e) => e.type === "instruction_resolved" && e.instructionId === id,
+      );
+      expect(resolved).toMatchObject({ status: "cancelled" });
+    }
+    // Disconnecting must never read as a failure once the scoreboard is built.
+    const board = buildScoreboard(events);
+    expect(board.players.every((p) => p.failed === 0)).toBe(true);
+  });
+});
+
 describe("Game — per-player view", () => {
   it("exposes only that player's controls, instruction views, and the ship", () => {
     const { g } = makeGame();
@@ -267,5 +376,18 @@ describe("Game — per-player view", () => {
     expect(view.panel.every((c) => c.ownerPlayerId === "A")).toBe(true);
     expect(view.instructions.every((i) => i.remainingMs > 0)).toBe(true);
     expect(view.ship.maxHealth).toBe(100);
+  });
+
+  it("carries no scoreboard while playing, and the built scoreboard once over", () => {
+    const { g, advance } = makeGame(["A", "B"], "view-scoreboard");
+    const room = { code: "BCDF", phase: "playing" as const, players: [], protocolVersion: 1 };
+    expect(g.viewFor(room, "A").scoreboard).toBeUndefined();
+
+    for (let k = 0; k < 40 && !g.isOver; k++) {
+      g.instructions.forEach((i) => (i.deadlineAt = 0));
+      advance(1_000);
+      g.step();
+    }
+    expect(g.viewFor(room, "A").scoreboard).toEqual(g.getScoreboard());
   });
 });

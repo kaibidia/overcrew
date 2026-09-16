@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import {
   MAX_HEALTH,
   buildPlayerView,
+  buildScoreboard,
   createRng,
   difficultyFor,
   generatePanels,
@@ -16,7 +18,9 @@ import {
   type PlayerView,
   type Rng,
   type RoomView,
+  type ScoreboardView,
   type ShipView,
+  type TelemetryEvent,
 } from "@overcrew/shared";
 
 type Timer = ReturnType<typeof setTimeout>;
@@ -34,6 +38,8 @@ export class Game {
   instructions: Instruction[] = [];
   readonly seed: string;
   readonly startedAt: number;
+  /** Stable id for this play session — see docs/Overcrew — Game Telemetry & Crash Scoreboard.md. */
+  readonly gameId: string;
 
   playerIds: string[];
   private health = MAX_HEALTH;
@@ -50,17 +56,66 @@ export class Game {
   private onChange: (() => void) | undefined;
   private readonly now: () => number;
 
+  // --- telemetry (Stage 7) ---------------------------------------------
+  private readonly telemetry: TelemetryEvent[] = [];
+  private instructionSeq = 0;
+  /** Instruction ids the source player's client has actually received at least once. */
+  private readonly seen = new Set<string>();
+  /** Instruction ids whose (hold) execution start has already been recorded. */
+  private readonly executionStarted = new Set<string>();
+  /** instructionId -> timestamps used to compute transmission/execution durations. */
+  private readonly timing = new Map<
+    string,
+    { createdAt: number; firstSeenAt?: number; executionStartAt?: number }
+  >();
+  /** Computed once, at game over — the scoreboard is a projection of `telemetry`. */
+  private scoreboard: ScoreboardView | undefined;
+
   constructor(playerIds: string[], opts: { seed?: string; now?: () => number } = {}) {
     this.now = opts.now ?? Date.now;
     this.seed =
       opts.seed ??
       `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    this.gameId = randomUUID();
     const gen = createRng(this.seed);
     this.playerIds = [...playerIds];
     this.controls = generatePanels(this.playerIds, gen);
     this.live = createRng(`${this.seed}:live`);
     this.startedAt = this.now();
+
+    const diff = difficultyFor(1);
+    this.telemetry.push({
+      type: "session_started",
+      gameId: this.gameId,
+      at: this.startedAt,
+      seed: this.seed,
+      playerIds: [...this.playerIds],
+      difficulty: diff,
+    });
+    for (const c of this.controls) {
+      if (!c.ownerPlayerId) continue;
+      this.telemetry.push({
+        type: "control_assigned",
+        gameId: this.gameId,
+        at: this.startedAt,
+        playerId: c.ownerPlayerId,
+        controlId: c.id,
+        controlType: c.definition.kind,
+        controlLabel: c.label,
+      });
+    }
+
     this.refill();
+  }
+
+  /** Read-only telemetry log, for debugging / future export (Stage 7). */
+  getTelemetry(): readonly TelemetryEvent[] {
+    return this.telemetry;
+  }
+
+  /** The crash scoreboard, once the game has ended — `undefined` while still playing. */
+  getScoreboard(): ScoreboardView | undefined {
+    return this.scoreboard;
   }
 
   get isOver(): boolean {
@@ -109,10 +164,35 @@ export class Game {
   }
 
   viewFor(room: RoomView, playerId: string): PlayerView {
-    return buildPlayerView(room, playerId, this, {
+    const view = buildPlayerView(room, playerId, this, {
       ship: this.ship(),
       now: this.now(),
       heldSince: this.held,
+    });
+    return this.scoreboard ? { ...view, scoreboard: this.scoreboard } : view;
+  }
+
+  /**
+   * Called by the transport layer (`apps/server/src/index.ts`) once a live
+   * `PlayerView` containing this instruction actually reaches the source
+   * player's connected socket. Idempotent — only the first delivery matters
+   * for "successfully transmitted". Overcrew has no speech recognition, so
+   * this is the only "transmission" the engine can observe.
+   */
+  markSeen(instructionId: string): void {
+    if (this.seen.has(instructionId)) return;
+    const ins = this.instructions.find((i) => i.id === instructionId);
+    if (!ins) return;
+    this.seen.add(instructionId);
+    const now = this.now();
+    const timing = this.timing.get(instructionId);
+    if (timing) timing.firstSeenAt = now;
+    this.telemetry.push({
+      type: "instruction_transmitted",
+      gameId: this.gameId,
+      at: now,
+      instructionId,
+      success: true,
     });
   }
 
@@ -127,11 +207,44 @@ export class Game {
     const expired = this.instructions.filter(
       (i) => i.status === "active" && i.deadlineAt <= now,
     );
+    let crashCause: CrashCause | undefined;
     for (const e of expired) {
       e.status = "expired";
       this.held.delete(e.controlId);
       if (e.expected.kind === "syncHold") this.held.delete(e.expected.withControlId);
+
+      const before = this.health;
       this.health -= diff.expirePenalty;
+      const after = this.health;
+      const responsiblePlayerId = this.controls.find(
+        (c) => c.id === e.controlId,
+      )?.ownerPlayerId;
+
+      this.telemetry.push({
+        type: "life_changed",
+        gameId: this.gameId,
+        at: now,
+        before,
+        after,
+        cost: diff.expirePenalty,
+        reason: "instruction_expired",
+        instructionId: e.id,
+        responsiblePlayerId,
+        sourcePlayerId: e.shownToPlayerId,
+        targetControlId: e.controlId,
+      });
+      this.resolveInstruction(e, "expired");
+
+      // The FIRST expiry that actually tips health to zero is the crash
+      // cause — later expiries in the same tick just pile on afterwards.
+      if (!crashCause && after <= 0) {
+        crashCause = {
+          instructionId: e.id,
+          responsiblePlayerId,
+          sourcePlayerId: e.shownToPlayerId,
+          targetControlId: e.controlId,
+        };
+      }
     }
     if (expired.length) {
       this.instructions = this.instructions.filter((i) => i.status === "active");
@@ -146,7 +259,7 @@ export class Game {
     this.refill();
     this.scheduleHoldCheck();
 
-    if (this.health <= 0) this.endGame("health");
+    if (this.health <= 0) this.endGame("health", crashCause);
   }
 
   // --- intents -------------------------------------------------------
@@ -170,6 +283,14 @@ export class Game {
       if (holding) {
         if (!this.held.has(intent.controlId)) {
           this.held.set(intent.controlId, this.now());
+          const ins = this.instructions.find(
+            (i) =>
+              i.status === "active" &&
+              (i.controlId === intent.controlId ||
+                (i.expected.kind === "syncHold" &&
+                  i.expected.withControlId === intent.controlId)),
+          );
+          if (ins) this.markExecutionStarted(ins.id);
         }
       } else {
         this.held.delete(intent.controlId);
@@ -229,6 +350,9 @@ export class Game {
     );
     this.instructions = this.instructions.filter((i) => !orphaned.includes(i));
     for (const o of orphaned) {
+      // The instruction never got a resolution of its own — it's cancelled,
+      // not failed, so it must not count against anyone's failure stats.
+      this.resolveInstruction(o, "cancelled");
       if (
         o.shownToPlayerId !== playerId &&
         this.playerIds.includes(o.shownToPlayerId)
@@ -262,6 +386,7 @@ export class Game {
     const done = this.instructions.find((i) => i.id === instructionId);
     if (!done) return;
     this.instructions = this.instructions.filter((i) => i.id !== done.id);
+    this.resolveInstruction(done, "executed");
     this.progress += 1;
     this.health = Math.min(
       MAX_HEALTH,
@@ -308,7 +433,84 @@ export class Game {
       ins.totalMs += extra;
     }
     this.instructions.push(ins);
+
+    this.instructionSeq += 1;
+    this.timing.set(ins.id, { createdAt: now });
+    this.telemetry.push({
+      type: "instruction_created",
+      gameId: this.gameId,
+      at: now,
+      instructionId: ins.id,
+      sequence: this.instructionSeq,
+      sourcePlayerId: ins.shownToPlayerId,
+      targetPlayerId: this.controls.find((c) => c.id === ins.controlId)
+        ?.ownerPlayerId,
+      targetControlId: ins.controlId,
+      targetControlLabel: ins.controlLabel,
+      instructionType: ins.expected.kind,
+      text: ins.text,
+      deadlineAt: ins.deadlineAt,
+    });
+
     this.scheduleHoldCheck();
+  }
+
+  // --- telemetry internals ------------------------------------------
+
+  /** First hold-start on a control that satisfies an active hold/syncHold instruction. */
+  private markExecutionStarted(instructionId: string): void {
+    if (this.executionStarted.has(instructionId)) return;
+    this.executionStarted.add(instructionId);
+    const now = this.now();
+    const timing = this.timing.get(instructionId);
+    if (timing) timing.executionStartAt = now;
+    this.telemetry.push({
+      type: "instruction_execution_started",
+      gameId: this.gameId,
+      at: now,
+      instructionId,
+    });
+  }
+
+  /**
+   * Record the terminal outcome of one instruction. If it was never
+   * successfully delivered to its source player (`markSeen` never fired),
+   * that failed delivery is recorded first — an instruction can resolve
+   * without ever having been transmitted (e.g. its recipient was
+   * disconnected the whole time).
+   */
+  private resolveInstruction(
+    ins: Instruction,
+    status: "executed" | "expired" | "cancelled",
+  ): void {
+    const now = this.now();
+    if (!this.seen.has(ins.id)) {
+      this.telemetry.push({
+        type: "instruction_transmitted",
+        gameId: this.gameId,
+        at: now,
+        instructionId: ins.id,
+        success: false,
+        failureReason: "recipient_never_connected",
+      });
+    }
+    const timing = this.timing.get(ins.id);
+    let durationMs: number | undefined;
+    if (status !== "cancelled" && timing) {
+      const start = timing.executionStartAt ?? timing.firstSeenAt ?? timing.createdAt;
+      durationMs = Math.max(0, now - start);
+    }
+    this.telemetry.push({
+      type: "instruction_resolved",
+      gameId: this.gameId,
+      at: now,
+      instructionId: ins.id,
+      status,
+      ...(durationMs !== undefined ? { durationMs } : {}),
+    });
+    this.timing.delete(ins.id);
+    this.seen.delete(ins.id);
+    this.executionStarted.delete(ins.id);
   }
 
   /** One-shot: fire when the soonest hold-in-progress would complete. */
@@ -344,11 +546,44 @@ export class Game {
     );
   }
 
-  private endGame(reason: GameOverReason): void {
+  private endGame(reason: GameOverReason, cause?: CrashCause): void {
     if (this.over) return;
     this.over = true;
     this.overReason = reason;
     this.health = Math.max(0, this.health);
     this.stop();
+
+    const now = this.now();
+    this.telemetry.push({
+      type: "session_ended",
+      gameId: this.gameId,
+      at: now,
+      endReason: reason,
+      elapsedMs: this.elapsedMs(),
+      finalLevel: this.level(),
+      progress: this.progress,
+    });
+    this.telemetry.push({
+      type: "crash",
+      gameId: this.gameId,
+      at: now,
+      reason,
+      causedByInstructionId: cause?.instructionId,
+      responsiblePlayerId: cause?.responsiblePlayerId,
+      sourcePlayerId: cause?.sourcePlayerId,
+      targetControlId: cause?.targetControlId,
+      healthAtCrash: this.health,
+    });
+    // The scoreboard is a pure projection of `telemetry` — computed once here
+    // so it doesn't have to be rebuilt on every broadcast after game over.
+    this.scoreboard = buildScoreboard(this.telemetry);
   }
+}
+
+/** Only the instruction whose expiry actually tipped health to zero, if any. */
+interface CrashCause {
+  instructionId: string;
+  responsiblePlayerId?: string;
+  sourcePlayerId: string;
+  targetControlId: string;
 }

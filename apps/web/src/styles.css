@@ -1443,3 +1443,62 @@ body.no-scroll {
 .over .pre__go {
   min-width: 200px;
 }
+
+/* ---- crash scoreboard (Stage 7) ---- */
+
+.over__board {
+  width: min(92vw, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.over__cause {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+.over__board-head,
+.over__board-row {
+  display: grid;
+  grid-template-columns: 1fr repeat(4, 40px);
+  align-items: center;
+  gap: 6px;
+  text-align: right;
+}
+.over__board-head {
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+.over__board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.over__board-row {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.over__board-row--crash {
+  border-color: var(--red);
+  background: rgba(255, 92, 108, 0.1);
+}
+.over__board-name,
+.over__board-head .over__board-name {
+  text-align: left;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.over__board-row--crash .over__board-name {
+  color: var(--red);
+}
