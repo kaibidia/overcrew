@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { Server, type Socket } from "socket.io";
 import {
   ClientEvent,
+  MIN_PLAYERS_TO_START,
   ServerEvent,
+  connectedCount,
   isValidRoomCode,
   normalizeRoomCode,
   type Ack,
@@ -33,6 +35,18 @@ const games = new Map<string, Game>();
 function disposeGame(code: string): void {
   games.get(code)?.stop();
   games.delete(code);
+}
+
+/** Flip a room into "playing" and start a fresh `Game` for its current members. */
+function launchGame(room: Room): void {
+  disposeGame(room.code); // in case a previous game lingered
+  room.phase = "playing";
+  io.to(roomChannel(room)).emit(ServerEvent.RoomState, room.view());
+  const game = new Game(room.members.map((m) => m.id));
+  games.set(room.code, game);
+  console.log(`game ${room.code} seed=${game.seed}`);
+  game.start(() => broadcastGame(room, game));
+  broadcastGame(room, game);
 }
 
 /**
@@ -215,13 +229,8 @@ io.on("connection", (socket) => {
     try {
       const token = (socket.data as SocketData).token;
       if (!token) throw new RoomError("expired", "Сессия истекла");
-      const room = rooms.startGame(token); // flips phase, broadcasts room:state
-      disposeGame(room.code); // in case a previous game lingered
-      const game = new Game(room.members.map((m) => m.id));
-      games.set(room.code, game);
-      console.log(`game ${room.code} seed=${game.seed}`);
-      game.start(() => broadcastGame(room, game));
-      broadcastGame(room, game);
+      const room = rooms.startGame(token); // validates host/phase/headcount
+      launchGame(room);
       ack({ ok: true, data: null });
     } catch (err) {
       fail(ack, err);
@@ -237,9 +246,18 @@ io.on("connection", (socket) => {
       if (!room || !member) throw new RoomError("expired", "Сессия истекла");
       if (!member.isHost)
         throw new RoomError("not_host", "Только капитан может перезапустить");
-      disposeGame(room.code);
-      room.phase = "lobby";
-      io.to(roomChannel(room)).emit(ServerEvent.RoomState, room.view());
+      // If everyone from the finished game is still here, jump straight back
+      // into a fresh game instead of making the crew re-ready in the lobby.
+      // Anyone having dropped means the roster may need reshuffling, so that
+      // case still goes through the lobby as before.
+      const everyonePresent = room.members.every((m) => m.connected);
+      if (everyonePresent && connectedCount(room.view().players) >= MIN_PLAYERS_TO_START) {
+        launchGame(room);
+      } else {
+        disposeGame(room.code);
+        room.phase = "lobby";
+        io.to(roomChannel(room)).emit(ServerEvent.RoomState, room.view());
+      }
       ack({ ok: true, data: null });
     } catch (err) {
       fail(ack, err);
