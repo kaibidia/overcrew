@@ -366,6 +366,50 @@ describe("Game — telemetry & crash scoreboard (Stage 7)", () => {
     const board = buildScoreboard(events);
     expect(board.players.every((p) => p.failed === 0)).toBe(true);
   });
+
+  it("logs every command a player sends, accepted or not, independent of instructions", () => {
+    const { g } = makeGame(PLAYERS, "telemetry-commands");
+    const c = g.controls.find((x) => x.definition.kind === "button")!;
+    const notOwner = PLAYERS.find((p) => p !== c.ownerPlayerId)!;
+
+    // Rejected: wrong owner.
+    g.applyIntent(notOwner, { type: "press", controlId: c.id });
+    // Accepted, but doesn't necessarily complete anything.
+    g.applyIntent(c.ownerPlayerId!, { type: "press", controlId: c.id });
+
+    const commands = g
+      .getTelemetry()
+      .filter((e) => e.type === "command_applied" && e.controlId === c.id);
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toMatchObject({
+      playerId: notOwner,
+      intent: "press",
+      accepted: false,
+    });
+    expect(commands[1]).toMatchObject({
+      playerId: c.ownerPlayerId,
+      intent: "press",
+      accepted: true,
+    });
+  });
+
+  it("records the sent value for a set command, and the completed instruction when it finishes one", () => {
+    const { g } = makeGame(PLAYERS, "telemetry-set");
+    const insId = valueBasedInstruction(g);
+    const { ownerId, intent } = intentFor(g, insId);
+    g.applyIntent(ownerId, intent);
+
+    const command = g
+      .getTelemetry()
+      .find((e) => e.type === "command_applied" && e.controlId === intent.controlId);
+    expect(command).toMatchObject({ accepted: true, intent: intent.type });
+    if (intent.type === "set") {
+      expect(command).toMatchObject({ value: intent.value });
+    }
+    if (intent.type !== "hold-start" && intent.type !== "hold-end") {
+      expect(command).toMatchObject({ completedInstructionId: insId });
+    }
+  });
 });
 
 describe("Game — per-player view", () => {

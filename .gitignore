@@ -11,3 +11,6 @@ docs/DESIGN_BRIEF_ENTRY_SCREENS.md
 
 # session scratch space
 scratchpad/
+
+# per-game telemetry export (apps/server/src/index.ts) — local only
+logs/

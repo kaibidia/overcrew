@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { Server, type Socket } from "socket.io";
 import {
   ClientEvent,
@@ -31,6 +33,46 @@ const games = new Map<string, Game>();
 function disposeGame(code: string): void {
   games.get(code)?.stop();
   games.delete(code);
+}
+
+/**
+ * Local, dev-only export: the full telemetry log for a finished game (who
+ * owned which control, every command anyone sent, every instruction's
+ * lifecycle) as one readable JSON file on disk. No database — see
+ * docs/DECISIONS.md D70. `logs/` is gitignored.
+ */
+const LOG_DIR = join(process.cwd(), "logs");
+
+function exportGameLog(room: Room, game: Game): void {
+  try {
+    mkdirSync(LOG_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const file = join(LOG_DIR, `${room.code}-${stamp}.json`);
+    writeFileSync(
+      file,
+      JSON.stringify(
+        {
+          gameId: game.gameId,
+          roomCode: room.code,
+          exportedAt: Date.now(),
+          // playerId -> nickname lookup — telemetry events only carry ids.
+          players: room.members.map((m) => ({
+            id: m.id,
+            nickname: m.nickname,
+            isHost: m.isHost,
+          })),
+          scoreboard: game.getScoreboard(),
+          events: game.getTelemetry(),
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+    console.log(`game ${room.code} telemetry written to ${file}`);
+  } catch (err) {
+    console.error(`failed to write telemetry log for ${room.code}`, err);
+  }
 }
 
 const rooms = new RoomManager({
@@ -78,13 +120,7 @@ function broadcastGame(room: Room, game: Game): void {
   if (game.isOver && room.phase === "playing") {
     room.phase = "gameover";
     io.to(roomChannel(room)).emit(ServerEvent.RoomState, room.view());
-    // Dev-visible telemetry export: full event log + computed scoreboard for
-    // this session. No persistence layer exists yet (see docs/DECISIONS.md) —
-    // for now this console line is the way to inspect a completed game.
-    console.log(
-      `game ${room.code} over: scoreboard=%j`,
-      game.getScoreboard(),
-    );
+    exportGameLog(room, game);
   }
   const view = room.view();
   for (const m of room.members) {

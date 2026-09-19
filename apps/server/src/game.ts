@@ -277,6 +277,7 @@ export class Game {
         control.ownerPlayerId !== playerId ||
         control.definition.kind !== "hold"
       ) {
+        this.logCommand(playerId, intent, { accepted: false });
         return { changed: false, completed: false };
       }
       const holding = intent.type === "hold-start";
@@ -298,19 +299,30 @@ export class Game {
       control.state = { kind: "hold", held: holding };
       const completed = this.checkHoldCompletions();
       this.scheduleHoldCheck();
+      this.logCommand(playerId, intent, { accepted: true });
       return { changed: true, completed };
     }
 
     const res = validateIntent(this, playerId, intent);
-    if (!res.ok || !res.nextState) return { changed: false, completed: false };
+    if (!res.ok || !res.nextState) {
+      this.logCommand(playerId, intent, { accepted: false });
+      return { changed: false, completed: false };
+    }
 
     const control = this.controls.find((c) => c.id === intent.controlId)!;
     const before = JSON.stringify(control.state);
     control.state = res.nextState;
     const changed = JSON.stringify(control.state) !== before;
 
-    if (!res.completedInstructionId) return { changed, completed: false };
+    if (!res.completedInstructionId) {
+      this.logCommand(playerId, intent, { accepted: true });
+      return { changed, completed: false };
+    }
     this.completeInstruction(res.completedInstructionId);
+    this.logCommand(playerId, intent, {
+      accepted: true,
+      completedInstructionId: res.completedInstructionId,
+    });
     return { changed: true, completed: true };
   }
 
@@ -456,6 +468,27 @@ export class Game {
   }
 
   // --- telemetry internals ------------------------------------------
+
+  /** Every raw intent a player sent, accepted or not — independent of instructions. */
+  private logCommand(
+    playerId: string,
+    intent: Intent,
+    opts: { accepted: boolean; completedInstructionId?: string },
+  ): void {
+    this.telemetry.push({
+      type: "command_applied",
+      gameId: this.gameId,
+      at: this.now(),
+      playerId,
+      controlId: intent.controlId,
+      intent: intent.type,
+      ...(intent.type === "set" ? { value: intent.value } : {}),
+      accepted: opts.accepted,
+      ...(opts.completedInstructionId
+        ? { completedInstructionId: opts.completedInstructionId }
+        : {}),
+    });
+  }
 
   /** First hold-start on a control that satisfies an active hold/syncHold instruction. */
   private markExecutionStarted(instructionId: string): void {
