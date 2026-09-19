@@ -99,6 +99,23 @@ export interface InstructionExecutionStartedEvent extends TelemetryBase {
   instructionId: string;
 }
 
+/**
+ * Every raw intent a player actually sent, whether or not it satisfied an
+ * instruction — the full "who did what to which control" log, independent of
+ * the instruction lifecycle above.
+ */
+export interface CommandAppliedEvent extends TelemetryBase {
+  type: "command_applied";
+  playerId: string;
+  controlId: string;
+  intent: "press" | "set" | "hold-start" | "hold-end";
+  /** Present only for `"set"` — the value the player sent. */
+  value?: string | number | boolean;
+  /** False if the control was unknown or not owned by this player. */
+  accepted: boolean;
+  completedInstructionId?: string;
+}
+
 export interface InstructionResolvedEvent extends TelemetryBase {
   type: "instruction_resolved";
   instructionId: string;
@@ -142,7 +159,8 @@ export type TelemetryEvent =
   | InstructionExecutionStartedEvent
   | InstructionResolvedEvent
   | LifeChangedEvent
-  | CrashEvent;
+  | CrashEvent
+  | CommandAppliedEvent;
 
 // --- Scoreboard (pure projection of the event log) -------------------------
 
