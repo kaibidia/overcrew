@@ -1,0 +1,780 @@
+/* ============================================================
+   Overcrew start / lobby — physical modular console
+   ------------------------------------------------------------
+   panel_chassis is the fixed background. Every other part is a
+   separate PNG layered on top and positioned in percentages of
+   the chassis reference box (chassis.webp, cropped square to its
+   metal edge, 880x1693). The whole assembly scales uniformly via
+   one aspect-ratio box — nothing re-measured per breakpoint.
+   Text, code characters and glows are software layers only;
+   error strings are never baked into art.
+
+   Layer order:  chassis  <  viewport insert + glare  <  chassis
+   frame (viewport hole cut out, so the frame overlaps the insert
+   and its corners never show)  <  modules  <  HTML text / code.
+   ============================================================ */
+
+.room--entry {
+  padding: 0;
+  gap: 0;
+  min-height: 100dvh;
+}
+
+.console-screen {
+  flex: 1;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: calc(env(safe-area-inset-top) + 2px) 2px
+    calc(env(safe-area-inset-bottom) + 2px);
+  background: #000;
+}
+
+.console {
+  position: relative;
+  aspect-ratio: 880 / 1693;
+  width: min(
+    100%,
+    calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 4px) * 880 / 1693)
+  );
+  background: url("/console/chassis.webp") center / 100% 100% no-repeat;
+  container-type: inline-size;
+  font-family: var(--f-stencil, "Arial Narrow", sans-serif);
+  -webkit-user-select: none;
+  user-select: none;
+
+  /* warm tungsten / amber cockpit lighting — no cold white LED */
+  --warm-cream: #f2d3a2; /* important light text, primary lettering */
+  --warm-ivory: #d8be94; /* normal illuminated text, secondary surfaces */
+  --warm-amber: #ffc078; /* small illuminated edges, highlight cores */
+  --warm-orange: #ff8a32; /* illuminated orange accents, active indicators */
+  --warm-glow: #d95a1a; /* outer glow, low-intensity emissive */
+  --warm-metal: #a9825c; /* muted metallic highlight, inactive edges */
+  --warm-disabled: rgba(216, 190, 148, 0.45);
+  --warm-cyan: #9fc9ce; /* JOIN active — aged cyan indicator bulb, not LED */
+  --warm-cyan-bright: #b7d9d8; /* JOIN brighter highlight */
+
+  /* local visual constants for this screen */
+  --room-controls-gap: 4%;
+  --refresh-size: 14%;
+}
+
+.console > * {
+  position: absolute;
+}
+
+/* ---- A. Viewport ---------------------------------------- */
+
+/* the insert + glare are drawn LARGER than the real porthole so no seam
+   shows at the edge; the chassis-frame overlay hides the overhang. */
+.vp {
+  left: 14%;
+  top: 0.5%;
+  width: 72%;
+  height: 30%;
+  z-index: 1;
+  overflow: hidden;
+}
+.vp__img,
+.vp__glare {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.vp__glare {
+  mix-blend-mode: screen;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* the chassis again, with the viewport hole cut out — sits over the
+   insert so the frame's rounded opening hides the insert's corners */
+.console__frame {
+  inset: 0;
+  z-index: 2;
+  background: url("/console/chassis-frame.webp") center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* error message — HUD layout: the painted warning triangle sits on the
+   left of the porthole, the text block occupies the right half. */
+.vp__err {
+  position: absolute;
+  left: 45%;
+  top: 5%;
+  width: 37%;
+  height: 22%;
+  z-index: 4;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: left;
+  line-height: 1.15;
+  pointer-events: none;
+}
+.vp__err b {
+  font-size: clamp(0.78rem, 4cqw, 1.2rem);
+  letter-spacing: 0.06em;
+  color: var(--warm-orange);
+  text-shadow:
+    0 0 5px rgba(255, 138, 50, 0.55),
+    0 0 14px rgba(217, 90, 26, 0.3);
+}
+.vp__err span {
+  margin-top: 0.35em;
+  font-size: clamp(0.56rem, 2.8cqw, 0.84rem);
+  letter-spacing: 0.01em;
+  color: var(--warm-ivory);
+}
+
+/* room-code readout — waiting-room screen only. The monitor's space insert
+   is swapped for a dedicated HUD backdrop (screen-room-code.webp): fitted
+   whole (contain) so its bracket/grid framing stays intact, clipped to the
+   glass shape, letterboxed with the artwork's own near-black. The grid and
+   linework are baked into the image — never re-drawn in CSS. */
+.codescreen {
+  position: absolute;
+  left: 17.5%;
+  top: 2.9%;
+  width: 65%;
+  height: 24.9%;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 3.2cqw;
+  background: #0a0602 url("/console/screen-room-code.webp") center / contain
+    no-repeat;
+}
+/* the code + captions sit over the backdrop, centred between its two painted
+   vertical brackets (~11.5% / ~88.5% of the artwork) */
+.vp__code {
+  position: absolute;
+  left: 17.5%;
+  top: 2.9%;
+  width: 65%;
+  height: 24.9%;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  padding: 0 13%;
+  text-align: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.vp__code-label {
+  font-size: clamp(0.46rem, 2.5cqw, 0.74rem);
+  letter-spacing: 0.26em;
+  /* the code stays the focus — captions are the same amber, dimmed */
+  color: rgba(255, 188, 77, 0.6);
+}
+.vp__code-value {
+  font-size: clamp(1.7rem, 9.5cqw, 2.7rem);
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  color: #ffbc4d;
+  text-shadow: 0 0 12px rgba(255, 170, 45, 0.35);
+}
+.vp__code-hint {
+  font-size: clamp(0.42rem, 2.1cqw, 0.6rem);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  color: rgba(255, 188, 77, 0.48);
+}
+
+/* ---- modules sit above the frame ---------------------- */
+
+.brand,
+.mode,
+.nick,
+.plate,
+.code,
+.crew,
+.exit {
+  z-index: 3;
+}
+
+/* ---- B. Game label ------------------------------------- */
+
+.brand {
+  left: 5%;
+  top: 29.5%;
+  width: 90%;
+  /* width controls; height follows the asset's intrinsic ratio — never distort.
+     the new name plate is much taller than the old strip. */
+  aspect-ratio: 1600 / 563;
+  background: url("/console/label.webp") 50% 50% / contain no-repeat;
+}
+
+/* ---- C. Create / Join mode module --------------------- */
+
+.mode {
+  left: 5%;
+  top: 47.5%;
+  width: 90%;
+  aspect-ratio: 1400 / 248;
+  background: url("/console/mode.webp") center / contain no-repeat;
+}
+.mode__seg {
+  position: absolute;
+  top: 12%;
+  height: 76%;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  color: var(--warm-metal);
+  font-weight: 400;
+  letter-spacing: 0.13em;
+  font-size: clamp(0.72rem, 3.4cqw, 0.98rem);
+}
+.mode__seg span {
+  display: block;
+  text-align: center;
+}
+.mode__seg--left {
+  left: 6.5%;
+  width: 41%;
+}
+.mode__seg--right {
+  right: 6.5%;
+  width: 41%;
+}
+/* selected: the dark material is lit from within by a physical indicator
+   bulb — warm amber for CREATE, aged cyan for JOIN. Soft, no hard edge,
+   never white or neon. Two clearly different illuminated controls. */
+.mode__seg--left.mode__seg--on {
+  color: #f2c879;
+  text-shadow:
+    0 0 4px rgba(255, 174, 72, 0.4),
+    0 0 10px rgba(217, 90, 26, 0.18);
+  background: radial-gradient(
+    ellipse 58% 62% at 50% 52%,
+    rgba(255, 174, 72, 0.28) 0%,
+    rgba(255, 138, 50, 0.1) 55%,
+    transparent 78%
+  );
+}
+.mode__seg--right.mode__seg--on {
+  color: var(--warm-cyan);
+  text-shadow:
+    0 0 4px rgba(183, 217, 216, 0.4),
+    0 0 10px rgba(83, 143, 153, 0.16);
+  background: radial-gradient(
+    ellipse 58% 62% at 50% 52%,
+    rgba(111, 175, 185, 0.22) 0%,
+    rgba(83, 143, 153, 0.12) 55%,
+    transparent 78%
+  );
+}
+
+/* ---- D. Callsign module ------------------------------- */
+
+.nick {
+  left: 5%;
+  top: 57.3%;
+  width: 90%;
+  aspect-ratio: 1400 / 359;
+  background: url("/console/nickname.webp") center / contain no-repeat;
+}
+.nick__label {
+  position: absolute;
+  /* centred on the engraved plate between the two screws, not on the module */
+  left: 6%;
+  top: 4%;
+  width: 31%;
+  height: 19%;
+  display: grid;
+  place-items: center;
+  color: var(--warm-ivory);
+  font-size: clamp(0.48rem, 2.2cqw, 0.68rem);
+  letter-spacing: 0.16em;
+}
+.nick__field {
+  position: absolute;
+  left: 5%;
+  top: 34%;
+  width: 74%;
+  height: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--warm-cream);
+  font-family: inherit;
+  font-weight: 400;
+  text-align: center;
+  letter-spacing: 0.06em;
+  font-size: clamp(0.95rem, 4.6cqw, 1.2rem);
+  padding: 0;
+  text-shadow:
+    0 0 4px rgba(255, 192, 120, 0.35),
+    0 0 10px rgba(255, 138, 50, 0.18);
+}
+.nick__field::placeholder {
+  color: var(--warm-disabled);
+  text-shadow: none;
+}
+.nick__field:focus {
+  outline: none;
+}
+/* the refresh knob is anchored to the socket painted into nickname_module,
+   so it is positioned relative to .nick (not the page) and stays centred
+   in the socket as the module scales */
+.nick__refresh {
+  position: absolute;
+  left: 88%;
+  top: 59.6%;
+  width: var(--refresh-size, 14%);
+  aspect-ratio: 964 / 976;
+  transform: translate(-50%, -50%);
+  border: 0;
+  padding: 0;
+  background: url("/console/refresh.webp") center / contain no-repeat;
+  transition:
+    transform 140ms ease,
+    filter 140ms ease;
+}
+.nick__refresh::before {
+  content: "";
+  position: absolute;
+  inset: -30%;
+}
+/* pressed: the same knob physically turned and dimmed — no scale, no
+   socket showing through, stays centred */
+.nick__refresh:active {
+  transform: translate(-50%, -50%) rotate(-22deg);
+  filter: brightness(0.8) drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
+}
+
+/* ---- E. Start plate + red button + code overlay ------- */
+
+/* the start plate is one local horizontal composition: the red actuator
+   seated in its painted socket on the left, and — depending on mode — the
+   action label or the room-code module filling the flat area to its right.
+   Both children keep their own aspect ratio; only the gap is tuned. */
+.plate {
+  left: 5%;
+  top: 70.8%;
+  width: 90%;
+  aspect-ratio: 1400 / 429;
+  background: url("/console/plate.webp") center / contain no-repeat;
+  display: flex;
+  align-items: center;
+  gap: var(--room-controls-gap, 4%);
+  /* left inset lines the actuator up with the painted socket;
+     right inset is the safety margin for the room-code module */
+  padding: 0 4% 0 5.6%;
+}
+.plate__btn {
+  flex: 0 0 auto;
+  height: 81%;
+  width: auto;
+  aspect-ratio: 1130 / 1139; /* stays a perfect circle at any scale */
+  transform: translateY(2%); /* seat the dome in the painted socket */
+  border: 0;
+  padding: 0;
+  background: url("/console/btn-idle.webp") center / contain no-repeat;
+  transition: transform 100ms ease;
+}
+.plate__btn:active:not(:disabled) {
+  transform: translateY(2%) scale(0.97);
+}
+.plate__btn:disabled {
+  filter: grayscale(0.5) brightness(0.6);
+  cursor: default;
+}
+.plate__action {
+  flex: 1 1 auto;
+  /* keep clear of the red actuator and the plate's raised edge */
+  padding: 0 6%;
+  text-align: center;
+  color: #e8c07a;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  font-size: clamp(1rem, 4.8cqw, 1.4rem);
+  line-height: 1.15;
+  pointer-events: none;
+  text-shadow:
+    0 0 4px rgba(255, 192, 120, 0.35),
+    0 0 10px rgba(255, 138, 50, 0.18);
+}
+/* disabled: engraved like ЭКИПАЖ but a shade darker — part of the panel,
+   not lit. Same box (font-size / position) as the active label. */
+.plate__action--dim {
+  color: #6d5f47;
+  text-shadow:
+    0 -1px 0 rgba(0, 0, 0, 0.48),
+    0 1px 0.5px rgba(234, 216, 182, 0.1);
+}
+
+/* waiting-room only: the action label and a small status line share the
+   flat area right of the actuator, stacked. The status line is always
+   present (one of a few short strings), so the label never shifts when it
+   changes. Rendered like an engraved backlit strip in the metal — a soft
+   glow, no frame, no blink. */
+.plate__stack {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3em;
+}
+.plate__stack > .plate__action {
+  flex: 0 0 auto;
+  padding: 0 4%;
+}
+/* secondary hint under НАЧАТЬ — deliberately recessive: muted amber, no
+   glow, lighter presence. Stays big enough to read on a phone. */
+.plate__status {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  font-weight: 300;
+  font-size: clamp(0.46rem, 2.2cqw, 0.62rem);
+  color: #a08a62;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+.plate__status--ready {
+  color: #7d9868; /* muted green, same low-key treatment */
+}
+
+/* room-code module — the room_code_panel_with_description asset. It is
+   height-driven so it always fits the plate vertically and never distorts;
+   its width follows from the source ratio. It fills most of the flat right
+   area, balancing the red actuator, with a small margin from the edges. */
+.code {
+  position: relative;
+  flex: 0 1 auto;
+  height: 86%;
+  width: auto;
+  aspect-ratio: 1381 / 666;
+  background: url("/console/code.webp") center / contain no-repeat;
+}
+.code__label {
+  position: absolute;
+  /* vertically centred on the raised name plate between its screws */
+  left: 22%;
+  top: 6.5%;
+  width: 56%;
+  height: 17%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--warm-ivory);
+  font-size: clamp(0.44rem, 2.3cqw, 0.66rem);
+  letter-spacing: 0.12em;
+}
+/* the grid tracks are matched to the four dark insets painted in code.webp
+   (measured centres 18.8 / 39.7 / 60.5 / 81.4% of the module) so each
+   character centres in its own slot, not as one centred row */
+.code__cells {
+  position: absolute;
+  left: 8.4%;
+  top: 40%;
+  width: 83.4%;
+  height: 46%;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  pointer-events: none; /* taps fall through to the input beneath */
+}
+.code__cell {
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  color: var(--warm-amber);
+  font-weight: 400;
+  font-size: clamp(1.15rem, 6.4cqw, 2rem);
+  text-shadow:
+    0 0 4px rgba(255, 192, 120, 0.35),
+    0 0 10px rgba(255, 138, 50, 0.18);
+}
+/* the real editable field — invisible, covers the whole module, on top */
+.code__input {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  font-size: 16px; /* keeps iOS from zooming on focus */
+  caret-color: var(--warm-orange);
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.code__input:focus {
+  outline: none;
+}
+
+/* ---- Waiting-room screen (same console, different state) ---
+   Screen-1-only controls (mode selector, callsign, refresh) are simply
+   absent — no ghost sockets to hide. The room-code readout moved into the
+   monitor (.vp__code above); the START plate/button (.plate, .plate__btn,
+   .plate__action) are reused byte-for-byte in their screen-1 position,
+   which is why they are not redefined here. */
+
+/* F. crew roster plate — a plain flat plate (no baked label geometry);
+   header and rows are entirely programmatic HTML. The panel's own inner
+   groove (measured on the art) reserves a flat band at the top for the
+   header and a separate narrow gutter on the right for the scrollbar —
+   the rows use the full remaining width of the groove, edge to edge.
+   Full chassis width like every other module; its top edge lines up with
+   screen 1's first module (.brand, top 29.5%) so the two screens read as
+   aligned, with a clear gap under the viewport. */
+.crew {
+  left: 5%;
+  top: 29.5%;
+  width: 90%;
+  aspect-ratio: 1167 / 986;
+  background: url("/console/crew-panel.webp") center / contain no-repeat;
+}
+/* sits in the flat metal band above the groove's raised frame (frame edge
+   is ~17.5% of the panel), shifted in past the corner screws; title left,
+   count right, on a shared baseline */
+.crew__head {
+  position: absolute;
+  left: 13%;
+  top: 7.5%;
+  width: 71%;
+  height: 7%;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  /* engraved into the metal, not printed on top: a muted aged-brass letter
+     close to the plate colour, a thin dark rim at the top and a faint lit
+     rim at the bottom — no glow, no outward drop shadow */
+  color: #8b7a5d;
+  letter-spacing: 0.18em;
+  font-size: clamp(0.56rem, 2.8cqw, 0.82rem);
+  text-shadow:
+    0 -1px 0 rgba(0, 0, 0, 0.42),
+    0 1px 0.5px rgba(236, 220, 188, 0.14);
+}
+.crew__head-rule {
+  flex: 1 1 auto;
+  align-self: center;
+  height: 0;
+  border-bottom: 1px solid rgba(216, 190, 148, 0.35);
+}
+.crew__head-count {
+  letter-spacing: 0.08em;
+  /* a touch lighter than the title, same brass tone; keeps the engraving */
+  color: #a48f6b;
+}
+
+/* the scrollable row list — sits inside the groove's flat inner band
+   (measured on crew-panel.webp: groove frame ~17.5% top / ~86% bottom).
+   Rows stack from the top with a small pad; they never centre vertically
+   when the crew is small. Width-driven off the groove's full inner width,
+   so they span it edge to edge with no baked-in dead margin. */
+.crew__rows {
+  position: absolute;
+  left: 9%;
+  top: 21%;
+  width: 75%;
+  height: 62%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-top: 1.4cqw;
+  box-sizing: border-box;
+}
+.crew__rows::-webkit-scrollbar {
+  display: none;
+}
+/* one row is a flex line over the baked bar art: the lens glow sits
+   absolutely over the painted lens; the name flexes and ellipsises; the
+   "(ты)" tag and the КАПИТАН badge never shrink and never get overlapped */
+.crew__row {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1400 / 189;
+  margin-bottom: 1.7cqw;
+  background: url("/console/crew-row.webp") center / contain no-repeat;
+  display: flex;
+  align-items: center;
+  gap: 0.55em;
+  /* content lives inside the bar's dark inset: left clears the lens, right
+     leaves a clear margin before the inset edge and the corner screw */
+  padding: 0 13% 0 16%;
+}
+.crew__row:last-child {
+  margin-bottom: 0;
+}
+/* the lens (bezel + frosted glass) is already painted into crew-row.webp;
+   this only adds light behind that glass, never a shape of its own — no
+   flat disc, no separate ring, nothing "pasted on top". Sized a little
+   inside the measured glass (~8.4%, 50%, ~9% wide) so the bright core stays
+   inside the lens and only a thin halo reaches the metal bezel around it —
+   presence only, no ready state: every rendered row is a connected player,
+   so this is unconditionally lit. */
+.crew__led {
+  position: absolute;
+  left: 8.4%;
+  top: 50%;
+  width: 7.4%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    circle,
+    rgba(190, 255, 220, 0.85) 0%,
+    rgba(90, 230, 150, 0.55) 38%,
+    rgba(60, 200, 130, 0.2) 62%,
+    rgba(60, 200, 130, 0) 82%
+  );
+}
+/* name + "(ты)" ride together and shrink as a unit; only the name itself
+   ellipsises, the "(ты)" tag is never dropped. The badge is pushed to the
+   row's right edge and never shrinks. */
+.crew__id {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+}
+.crew__name {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--warm-cream);
+  letter-spacing: 0.02em;
+  font-size: clamp(0.62rem, 3.1cqw, 0.9rem);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.crew__you {
+  flex: 0 0 auto;
+  color: var(--warm-metal);
+  font-size: clamp(0.52rem, 2.5cqw, 0.72rem);
+}
+.crew__badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0.22em 0.8em;
+  border: 1px solid rgba(255, 174, 72, 0.5);
+  border-radius: 999px;
+  color: var(--warm-amber);
+  letter-spacing: 0.08em;
+  font-size: clamp(0.48rem, 2.4cqw, 0.68rem);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+/* Scroll rail — the track asset (with its own baked up/down arrow caps)
+   sits centred over the panel's carved scrollbar gutter, matched to the
+   rows band above (same top/height as .crew__rows). Rendered height-driven
+   off that band so it never distorts; centred with a transform so its
+   aspect-ratio-derived width doesn't need computing by hand. Rendered only
+   while the roster actually overflows (see Lobby.tsx). */
+.crew__scroll {
+  position: absolute;
+  left: 92.75%;
+  top: 21%;
+  height: 62%;
+  width: auto;
+  aspect-ratio: 284 / 1900;
+  transform: translateX(-50%);
+  background: url("/console/scrollbar-track.webp") center / contain no-repeat;
+}
+/* The thumb's height changes continuously with how much of the roster is
+   visible (see Lobby.tsx), so — unlike the rest of this file — it can't
+   keep a fixed aspect-ratio box; height is set inline per-render instead.
+   The live resize only ever squeezes it a little (its own aspect ratio is
+   close to the channel's), so its screws/bevel don't read as stretched at
+   the sizes this rail actually renders at. It travels within the track's
+   own inner channel, inset from the arrow caps baked into the track art
+   at each end; the warm highlight is what marks it as the lit, moving
+   part against the dormant rail, not a flat neon fill. */
+.crew__scroll-thumb {
+  position: absolute;
+  left: 50%;
+  width: 55%;
+  transform: translateX(-50%);
+  background: url("/console/scrollbar-thumb.webp") 50% 50% / 100% 100%
+    no-repeat;
+  filter: brightness(1.4) saturate(1.25)
+    drop-shadow(0 0 3px rgba(255, 150, 60, 0.55));
+}
+
+/* G. Back/Exit plate — sits below the fixed start plate, above the
+   chassis's decorative handle/vents. Narrower than the start plate: the
+   available strip below the fixed START anchor is short, and stretching
+   this plate to the same 90% width would run it into the handle. */
+.exit {
+  left: 34%;
+  top: 86.3%;
+  width: 32%;
+  aspect-ratio: 1400 / 336;
+  background: url("/console/exit-plate.webp") center / contain no-repeat;
+  display: grid;
+  place-items: center;
+}
+.exit__label {
+  color: var(--warm-ivory);
+  letter-spacing: 0.14em;
+  font-size: clamp(0.6rem, 3cqw, 0.85rem);
+  pointer-events: none;
+}
+
+/* ---- Splash ------------------------------------------- */
+
+.splash--console {
+  gap: 1.1rem;
+}
+.splash__brand {
+  width: min(86%, 26rem);
+  aspect-ratio: 1600 / 563;
+  background: url("/console/label.webp") center / contain no-repeat;
+}
+.splash__status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-dim);
+  font-family: var(--f-stencil, sans-serif);
+  letter-spacing: 0.06em;
+  font-size: 0.9rem;
+}
+.splash__diode {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #ffd38a, #ff7a1e 55%, #7a2c05);
+  box-shadow: 0 0 10px rgba(255, 140, 40, 0.7);
+  animation: diode 1.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash__diode {
+    animation: none;
+  }
+}
+@keyframes diode {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}

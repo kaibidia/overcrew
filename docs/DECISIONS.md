@@ -521,13 +521,80 @@ instead of the red countdown while it's a hold. The hold control shows a pulsing
 
 ---
 
+## 2026-09-05 — Lobby roster rework: physical asset fit + presence-only state
+
+### D66. Crew roster reworked to fit taller regenerated panel art
+The waiting-room roster plate was regenerated taller (`crew-panel.webp`,
+1167×986 vs. the old 1326×794) so the header band and 4 row slots fit the
+panel's own carved groove without leaving dead flat-metal space to the right
+of the rows. It keeps the full 90% chassis width every other module uses; its
+top edge lines up with screen 1's first module (`.brand`, `top: 29.5%`) so the
+two screens read as aligned, with a clear gap under the viewport. The header
+sits in the flat metal band *above* the groove's raised frame (frame edge
+~17.5% of the panel), shifted in past the corner screws, title left / count
+right on a shared baseline. Both are treated as **engraving cut into the
+metal**, not lettering printed on top: a muted aged-brass colour close to the
+plate itself, a thin dark rim at the top edge and a faint lit rim at the
+bottom (`text-shadow` only, no glow, no outward drop shadow) — the count a
+half-step lighter than the title. `.crew__rows` sits inside the groove
+(`top: 21%`, `height: 62%`) with a small `padding-top` — rows stack from the
+top and never centre vertically when the crew is small. No placeholder rows
+for absent players.
+
+### D67a. START plate status strip + engraved label states
+Below "НАЧАТЬ", in the flat area right of the actuator, `.plate__status` shows
+one always-present line (fixed slot, so "НАЧАТЬ" never shifts): `НУЖЕН ЕЩЁ 1
+ИГРОК` (captain alone), `ЭКИПАЖ СОБРАН` at 2–8, `ОЖИДАЕМ КАПИТАНА` for
+non-captains. It is a deliberately recessive secondary hint — muted amber
+(muted green for "собран"), light weight, **no glow** — sized to still read on
+a phone. "НАЧАТЬ" itself: engraved like ЭКИПАЖ but a shade darker in the
+disabled state (part of the panel, not lit), warm and bright in the active
+state; identical box in both so nothing moves. The badge (`.crew__badge`)
+sits fully inside the row bar's dark inset with a clear margin from the inset
+edge and corner screw, vertically centred; space for it is reserved by the
+flex layout and the nickname ellipsises when width is short (not clipped by
+`overflow: hidden`). The 2/8 limits and captain-only start stay enforced in
+`rooms.ts` (`joinRoom` → "full", `canStart`), not just in the button's look.
+
+### D67. Roster shows presence only — no ready state, no placeholder rows
+A row exists only for a player who is connected *right now*; there is no
+separate "ready" opt-in and no dimmed/placeholder row for a disconnected or
+never-joined seat — a dropped phone (even mid-reconnect-grace) simply isn't
+listed until it reconnects. Every rendered row is therefore a connected
+player by construction, so its status LED is unconditionally lit — no on/off
+branching. The captain and the START actuator are unaffected by this: only
+the captain's `.plate` press starts the game, same as before any ready
+mechanic existed.
+
+### D68. Scrollbar uses the panel's own carved gutter, not a floating rail
+The panel bakes a separate narrow vertical gutter next to the row groove.
+`.crew__scroll` overlays the standalone track art (`scrollbar-track.webp`,
+with its own baked up/down arrow caps) centred on that gutter, height-matched
+to the rows band; it renders only while the roster actually overflows (roster
+`scrollHeight > clientHeight`), not as a permanent decoration. The thumb
+(`scrollbar-thumb.webp`) is the one element in this file whose box isn't a
+fixed aspect-ratio — its height is set inline per-render from the real
+`clientHeight / scrollHeight` fraction (same math as its `top`) — with a warm
+brightness/drop-shadow filter marking it as the lit, moving part against the
+dormant rail.
+
+### D69. Per-row status LED is a glow through the row's own lens, not an overlay shape
+`crew-row.webp` already paints a physical lens (bezel + frosted glass) at the
+row's left end. `.crew__led` draws no disc of its own — an earlier pass still
+had one, and it read as "two circles" competing with the painted lens. It's
+now a single soft `radial-gradient` + `mix-blend-mode: screen` glow, sized a
+little inside the measured glass so the bright core stays inside the lens and
+only a thin halo reaches the surrounding metal bezel.
+
+---
+
 ## 2026-09-16 — Out-of-plan: game telemetry & crash scoreboard
 
 Implemented ahead of the roadmap at the user's request, after real playtesting
 surfaced that "who actually caused the crash" was invisible. Spec:
 `docs/Overcrew — Game Telemetry & Crash Scoreboard.md`.
 
-### D66. Telemetry is an in-memory event log owned by `Game`, not a new system
+### D70. Telemetry is an in-memory event log owned by `Game`, not a new system
 `Game` (`apps/server/src/game.ts`) pushes `TelemetryEvent`s
 (`packages/shared/src/telemetry.ts`) at its own existing state transitions —
 `addInstruction`, `completeInstruction`, the expire loop in `step()`,
@@ -537,7 +604,7 @@ array on the `Game` instance, inspectable via `getTelemetry()` and dumped to the
 console on game-over (`index.ts`) as the current "export" path. Nothing here
 changes gameplay or timing.
 
-### D67. Role vocabulary: "source" (recipient) vs "target" (control owner)
+### D71. Role vocabulary: "source" (recipient) vs "target" (control owner)
 Reused the game's own invariant instead of inventing terms: an instruction's
 **source** is `shownToPlayerId` (reads it, responsible for shouting it out);
 its **target** is the owner of `controlId` (must physically act on it). These
@@ -546,7 +613,7 @@ contribution with execution contribution — a player's `transmitted` count
 (source role) and `executed`/`failed` counts (target role) are tracked
 separately (`ScoreboardView`/`PlayerScoreLine`).
 
-### D68. "Transmission" = delivery to a connected socket; no speech recognition
+### D72. "Transmission" = delivery to a connected socket; no speech recognition
 Overcrew has no voice/speech input — "successfully transmitted" is defined as
 the server actually delivering a `PlayerView` containing the instruction to the
 source player's connected socket at least once. `index.ts`'s `broadcastGame` is
@@ -556,7 +623,7 @@ records a failed transmission (`recipient_never_connected`) if an instruction
 resolves without ever being seen. This is the literal, honest mapping of
 "transmission telemetry" onto a shout-based game with no recognition step.
 
-### D69. Only real terminal states are recorded — no fabricated ones
+### D73. Only real terminal states are recorded — no fabricated ones
 `InstructionResolution` is `"executed" | "expired" | "cancelled"` only.
 `validateIntent` has no "executed incorrectly" or "invalid" state — an action
 that doesn't satisfy the active instruction is a valid no-op, not a failure
@@ -567,7 +634,7 @@ that's neither a success nor a deadline miss, so it counts toward nobody's
 `failed` total. Similarly `EndReason` is only `"health" | "crew"` — Overcrew is
 an endless survival game with no "completed / won" outcome to report.
 
-### D70. Crash causality: first expiry to actually zero the health, not a guess
+### D74. Crash causality: first expiry to actually zero the health, not a guess
 `step()`'s expire loop now applies each expired instruction's penalty one at a
 time and remembers the *first* one whose penalty brings health to ≤ 0 as the
 `CrashCause` (`instructionId`, the control's owner as `responsiblePlayerId`,
@@ -578,7 +645,7 @@ undefined rather than guessed. `buildScoreboard` (pure reducer, no separate
 scoring logic) turns the event log into `ScoreboardView` once, cached on
 `Game` at `endGame()` and attached to `PlayerView.scoreboard` from then on.
 
-### D71. Scoreboard lives on the existing `GameOver` screen, same visual system
+### D75. Scoreboard lives on the existing `GameOver` screen, same visual system
 `GameScreen.tsx`'s `GameOver` renders `gv.scoreboard` as a compact per-player
 row list (`.over__board*` in `styles.css`, matching `--surface`/`--edge`/
 `--red`) below the existing top-level stats — no redesign, no new screen.

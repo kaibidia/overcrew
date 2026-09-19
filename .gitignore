@@ -14,3 +14,7 @@ scratchpad/
 
 # per-game telemetry export (apps/server/src/index.ts) — local only
 logs/
+
+# design source art (large; ship-ready webp is generated into apps/web/public/)
+overcrew_design/
+image/
