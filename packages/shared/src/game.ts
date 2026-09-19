@@ -322,7 +322,12 @@ export function generatePanels(
         (c) => c.definition.kind !== "hold" && !holdOwners.has(c.ownerPlayerId),
       );
       if (!fresh.length) break;
-      const pick = fresh.sort(
+      // Shuffle before the (stable) sort so ties on complexity-distance break
+      // randomly rather than always favoring whoever joined first — Array.sort
+      // is stable, and `fresh` is built from `controls` in join order, so an
+      // unshuffled sort systematically handed the hold control to the first
+      // one or two players almost every game (see DECISIONS.md).
+      const pick = rng.shuffle(fresh).sort(
         (a, b) =>
           Math.abs(CONTROL_COMPLEXITY[a.definition.kind] - holdWeight) -
           Math.abs(CONTROL_COMPLEXITY[b.definition.kind] - holdWeight),
