@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from "react";
-import type { CrashInfo, PlayerView, PublicPlayer } from "@overcrew/shared";
+import type { CrashInfo, PlayerView } from "@overcrew/shared";
 import { PanelGrid } from "../game/PanelGrid";
 import type { RoomApi } from "../net/useRoom";
 
@@ -117,18 +117,16 @@ export function GameScreen({ api }: { api: RoomApi }) {
   );
 }
 
-/** "«ГИРОСКОП → ВВЕРХ» не выполнено вовремя — в ответе Комета." */
-function crashCauseText(crash: CrashInfo, players: readonly PublicPlayer[]): string {
-  if (crash.reason === "crew") {
-    return "На борту осталось меньше двух игроков.";
-  }
-  if (crash.instructionText && crash.responsiblePlayerId) {
-    const name =
-      players.find((p) => p.id === crash.responsiblePlayerId)?.nickname ??
-      "неизвестный игрок";
-    return `«${crash.instructionText}» не выполнено вовремя — в ответе ${name}.`;
-  }
-  return "Здоровье корабля исчерпано.";
+/**
+ * Deliberately doesn't name the player responsible for the final missed
+ * instruction — playtesting showed nobody cared who flubbed the very last
+ * command specifically; what's interesting is who missed the most overall
+ * (see the sorted/highlighted board below instead).
+ */
+function crashCauseText(crash: CrashInfo): string {
+  return crash.reason === "crew"
+    ? "На борту осталось меньше двух игроков."
+    : "Здоровье корабля исчерпано.";
 }
 
 function formatAvgMs(ms: number | null): string {
@@ -141,6 +139,11 @@ function GameOver({ api, gv }: { api: RoomApi; gv: PlayerView }) {
   const iAmHost =
     gv.room.players.find((p) => p.id === gv.you)?.isHost === true;
   const board = gv.scoreboard;
+  // Least-missed first; the player(s) tied for the most missed instructions
+  // are called out in red — that turned out to be what players actually
+  // wanted to see, not who happened to flub the very last command.
+  const sortedPlayers = board ? [...board.players].sort((a, b) => a.failed - b.failed) : [];
+  const maxFailed = board ? Math.max(0, ...board.players.map((p) => p.failed)) : 0;
 
   return (
     <div className="over">
@@ -165,7 +168,7 @@ function GameOver({ api, gv }: { api: RoomApi; gv: PlayerView }) {
       {board && (
         <div className="over__board">
           {board.crash && (
-            <p className="over__cause">{crashCauseText(board.crash, gv.room.players)}</p>
+            <p className="over__cause">{crashCauseText(board.crash)}</p>
           )}
           <div className="over__board-head">
             <span className="over__board-name">игрок</span>
@@ -175,14 +178,15 @@ function GameOver({ api, gv }: { api: RoomApi; gv: PlayerView }) {
             <span>сред.</span>
           </div>
           <ul className="over__board-list">
-            {board.players.map((p) => {
+            {sortedPlayers.map((p) => {
               const nickname =
                 gv.room.players.find((pl) => pl.id === p.playerId)?.nickname ??
                 p.playerId;
+              const isWorst = maxFailed > 0 && p.failed === maxFailed;
               return (
                 <li
                   key={p.playerId}
-                  className={`over__board-row${p.causedCrash ? " over__board-row--crash" : ""}`}
+                  className={`over__board-row${isWorst ? " over__board-row--worst" : ""}`}
                 >
                   <span className="over__board-name">
                     {nickname}

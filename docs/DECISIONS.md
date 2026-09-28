@@ -649,3 +649,56 @@ scoring logic) turns the event log into `ScoreboardView` once, cached on
 `GameScreen.tsx`'s `GameOver` renders `gv.scoreboard` as a compact per-player
 row list (`.over__board*` in `styles.css`, matching `--surface`/`--edge`/
 `--red`) below the existing top-level stats — no redesign, no new screen.
+
+---
+
+## 2026-09-19 — Post-playtest fixes (batch 1)
+
+First round of fixes from a real playtest batch with friends (multiple full
+games, logs kept via the telemetry export). See conversation history / issue
+list for the exact comments this addresses.
+
+### D76. `generatePanels` no longer favors whoever joined the room first
+The "ensure ≥ 2 hold owners" top-up (`packages/shared/src/game.ts`) picked
+`fresh.sort(...)[0]` — `Array.sort` is stable, and `fresh` is built from
+`controls` in player-join order, so ties in the complexity-distance score
+were silently resolved by seat order. Across 2000 simulated 4-player games
+this meant the 1st-joined player held a hold control 93% of the time, the
+2nd 83%, the 3rd/4th under 15% — reproduced identically on two independent
+real playtest groups (same nickname held it in 5/5, then 4/4, real games).
+Fix: `rng.shuffle(fresh)` before the sort, so ties break randomly instead of
+by seat order. Re-simulated: ~50% each, as expected for a "≥ 2 of 4" random
+guarantee. Regression test in `game.test.ts` asserts every join position
+lands in [30%, 70%] over 300 seeded games.
+
+### D77. Crash scoreboard: no lone scapegoat, sorted/highlighted by total misses
+Playtesters weren't interested in who happened to flub the *last* instruction
+before the crash (`crashCauseText` used to name them) — that got dropped;
+the crash line now only states the reason (health / crew), no player named.
+What people *did* want: who missed the most overall. `GameOver`
+(`GameScreen.tsx`) now sorts the per-player board by `failed` ascending and
+highlights (red, `.over__board-row--worst`) whichever player(s) are tied for
+the maximum `failed` count (only if that max is > 0). The underlying
+`causedCrash` / crash-instruction telemetry is untouched — still computed
+and available — this is purely a display decision.
+
+### D78. Restart skips the lobby when the crew hasn't changed
+`room:restart` used to always drop back to `"lobby"`, forcing the host to
+press start again even when nobody left. `apps/server/src/index.ts` now
+checks `room.members.every(m => m.connected)` (and the usual
+`MIN_PLAYERS_TO_START` headcount): if everyone from the finished game is
+still present, it calls the same `launchGame()` helper `room:start` uses and
+jumps straight into a fresh `Game` — same seed-generation path, no lobby
+round-trip. If anyone dropped, it still falls back to the lobby so the host
+can see the current roster before deciding. `Start` and this "instant
+restart" path now share `launchGame(room)` instead of duplicating the
+dispose/create/broadcast sequence.
+
+### D79. Synchronized-hold instruction text wraps instead of getting cut off
+`.instr__text` (`styles.css`) was `white-space: nowrap` with an ellipsis —
+fine for a single control name, but a `syncHold` instruction names *two*
+("A + B → УДЕРЖАТЬ ВМЕСТЕ 3с") and truncating either one makes it
+impossible to complete. Switched to `white-space: normal; overflow-wrap:
+break-word` (wraps onto a second line instead of cutting off) and trimmed
+the font-size clamp slightly so a wrapped two-line instruction still fits
+comfortably inside the existing `.instr` panel.

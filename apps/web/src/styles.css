@@ -1075,14 +1075,16 @@ body.no-scroll {
   gap: 3px;
 }
 .instr__text {
-  font-size: clamp(1rem, 4.6vw, 1.35rem);
+  font-size: clamp(0.86rem, 4.2vw, 1.2rem);
   font-weight: 800;
   letter-spacing: 0.02em;
   color: var(--text);
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.18;
+  /* Synchronized-hold instructions name two controls ("A + B → УДЕРЖАТЬ
+     ВМЕСТЕ 3с") and both names matter — truncating either with an ellipsis
+     makes the instruction unreadable. Wrap instead of cutting it off. */
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 .instr__bar {
   display: block;
@@ -1404,7 +1406,7 @@ body.no-scroll {
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
 }
-.over__board-row--crash {
+.over__board-row--worst {
   border-color: var(--red);
   background: rgba(255, 92, 108, 0.1);
 }
@@ -1416,6 +1418,6 @@ body.no-scroll {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.over__board-row--crash .over__board-name {
+.over__board-row--worst .over__board-name {
   color: var(--red);
 }

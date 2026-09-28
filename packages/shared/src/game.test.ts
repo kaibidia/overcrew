@@ -108,6 +108,32 @@ describe("generatePanels (Stage 4)", () => {
     const b = controls.filter((c) => c.ownerPlayerId === "b").map((c) => c.label);
     expect(a).not.toEqual(b);
   });
+
+  it("does not systematically hand the hold control to whoever joined first", () => {
+    // Regression: the "ensure ≥ 2 hold owners" top-up used to pick from
+    // `fresh.sort(...)` unshuffled — a stable sort on ties left it always
+    // favoring earlier entries in `controls`, i.e. whoever joined first.
+    // Real playtests showed player 1 holding it ~93% of games, player 2
+    // ~83%, players 3/4 under 15% (see DECISIONS.md). With 4 players and a
+    // ≥2-owners guarantee, each join position should end up near 50%.
+    const players = ["a", "b", "c", "d"];
+    const N = 300;
+    const holdOwnerGames = new Map<string, number>(players.map((p) => [p, 0]));
+    for (let s = 0; s < N; s++) {
+      const controls = panelFor(`hold-bias-${s}`, players);
+      const owners = new Set(
+        controls
+          .filter((c) => c.definition.kind === "hold")
+          .map((c) => c.ownerPlayerId!),
+      );
+      for (const p of owners) holdOwnerGames.set(p, holdOwnerGames.get(p)! + 1);
+    }
+    for (const p of players) {
+      const rate = holdOwnerGames.get(p)! / N;
+      expect(rate).toBeGreaterThan(0.3);
+      expect(rate).toBeLessThan(0.7);
+    }
+  });
 });
 
 describe("difficulty ramp (Stage 5)", () => {
